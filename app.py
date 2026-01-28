@@ -1,19 +1,23 @@
 import streamlit as st
-import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
-import os
 
-# App එකේ මාතෘකාව
+# --- සැකසුම් ---
+SHEET_NAME = "My Daily Expenses"  # ඔයා Google Sheet එකට දුන් නම මෙතනට දාන්න
+
+# --- Google Sheets සම්බන්ධ කිරීම ---
+def connect_to_gsheet():
+    # Streamlit Secrets වලින් Key එක ලබාගැනීම
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = dict(st.secrets["gcp_service_account"]) # අපි පහල පියවරේදී මේක හදනවා
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    return client.open(SHEET_NAME).sheet1
+
+# --- App එකේ පෙනුම ---
 st.set_page_config(page_title="Daily Expense Tracker", layout="centered")
-st.title("💰 මගේ දෛනික වියදම්")
-
-# දත්ත ගබඩා කරන file එක (Excel/CSV)
-FILE_NAME = "expenses.csv"
-
-# File එක නැත්නම් අලුතින් එකක් හදනවා
-if not os.path.exists(FILE_NAME):
-    df = pd.DataFrame(columns=["දවස", "වර්ගය", "විස්තරය", "මුදල"])
-    df.to_csv(FILE_NAME, index=False)
+st.title("💰 මගේ දෛනික වියදම් (Google Sheets)")
 
 # වියදම් ඇතුළත් කරන කොටස
 with st.form("expense_form", clear_on_submit=True):
@@ -22,23 +26,25 @@ with st.form("expense_form", clear_on_submit=True):
     desc = st.text_input("විස්තරය")
     amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=10.0)
     
-    submit = st.form_submit_state = st.form_submit_button("එකතු කරන්න")
+    submit = st.form_submit_button("එකතු කරන්න")
 
 if submit:
     if amount > 0:
-        # අලුත් දත්ත පේළියක් සැකසීම
-        new_data = pd.DataFrame([[today, category, desc, amount]], columns=["දවස", "වර්ගය", "විස්තරය", "මුදල"])
-        # පරණ දත්ත වලට අලුත් ඒවා එකතු කිරීම
-        new_data.to_csv(FILE_NAME, mode='a', header=False, index=False)
-        st.success("වියදම සාර්ථකව ඇතුළත් කළා!")
+        try:
+            sheet = connect_to_gsheet()
+            # Google Sheet එකට දත්ත යැවීම
+            sheet.append_row([str(today), category, desc, amount])
+            st.success("✅ වියදම Google Sheet එකට සාර්ථකව ඇතුළත් කළා!")
+        except Exception as e:
+            st.error(f"දෝෂයක් සිදුවිය: {e}")
     else:
         st.error("කරුණාකර මුදලක් ඇතුළත් කරන්න.")
 
-# ඇතුළත් කළ වියදම් පෙන්වීම
-st.subheader("📊 ඇතුළත් කළ දත්ත")
-data = pd.read_csv(FILE_NAME)
-st.dataframe(data.tail(10)) # අන්තිමට ඇතුළත් කළ 10 පෙන්වයි
-
-# මුළු වියදම ගණනය කිරීම
-total = data["මුදල"].sum()
-st.info(f"මුළු වියදම: Rs. {total:,.2f}")
+# Google Sheet එකේ ඇති දත්ත පෙන්වීම (අවශ්‍ය නම් පමණක්)
+if st.checkbox("ඇතුළත් කළ දත්ත බලන්න"):
+    try:
+        sheet = connect_to_gsheet()
+        data = sheet.get_all_records()
+        st.dataframe(data)
+    except:
+        st.warning("දත්ත පෙන්වීමට නොහැක. Sheet එක හිස් විය හැක.")
