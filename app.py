@@ -17,15 +17,15 @@ def connect_to_gsheet():
         client = gspread.authorize(creds)
         return client.open(SHEET_NAME).sheet1
     except Exception as e:
-        st.error(f"Google Sheet සම්බන්ධතා දෝෂයක්: {e}")
+        st.error(f"සම්බන්ධතා දෝෂයක්: {e}")
         return None
 
 # --- App Layout ---
 st.set_page_config(page_title="Daily Tracker", layout="centered")
 st.title("💰 මගේ දෛනික වියදම්")
 
-# --- Input Form ---
-trans_type = st.radio("ගනුදෙනු වර්ගය", ["වියදම්", "ආදායම්"], horizontal=True)
+# --- Form Section ---
+trans_type = st.radio("වර්ගය", ["වියදම්", "ආදායම්"], horizontal=True)
 
 with st.form("entry_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
@@ -55,15 +55,16 @@ if submit:
         sheet = connect_to_gsheet()
         if sheet:
             try:
+                # දත්ත Google Sheet එකට යැවීම
                 row = [str(today), user_name, trans_type, category, amount, payment_method, bill_no, location, remarks]
                 sheet.append_row(row)
                 st.success(f"✅ {trans_type} ඇතුළත් කළා: රු. {amount}")
             except Exception as e:
-                st.error(f"දත්ත යැවීමේ දෝෂයක්: {e}")
+                st.error(f"Error: {e}")
     else:
         st.warning("කරුණාකර මුදලක් ඇතුළත් කරන්න.")
 
-# --- 📊 MONTHLY SUMMARY & CHARTS ---
+# --- 📊 MONTHLY SUMMARY ---
 st.markdown("---")
 st.subheader("📅 මාසික සාරාංශය")
 
@@ -75,28 +76,32 @@ if sheet:
         if len(data) > 0:
             df = pd.DataFrame(data)
             
-            # 1. Headers සුද්ද කිරීම
+            # --- දත්ත පිරිසිදු කිරීම (Data Cleaning) ---
+            
+            # 1. Headers වල spaces අයින් කිරීම
             df.columns = df.columns.str.strip()
 
-            # 2. 'මුදල' තීරුව සුද්ද කිරීම
+            # 2. මුදල් පිරිසිදු කිරීම (Rs. , වැනි දේ ඉවත් කිරීම)
             if 'මුදල' in df.columns:
                 df['මුදල'] = df['මුදල'].astype(str).str.replace(r'[^\d.]', '', regex=True)
                 df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
             
-            # 3. දිනය Filter කිරීම
+            # 3. දිනය පිරිසිදු කිරීම (Date Parsing)
             if 'දිනය' in df.columns:
-                df['දිනය'] = pd.to_datetime(df['දිනය'], errors='coerce')
+                # දින ආකෘතිය හරියට හදාගැනීම
+                df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce')
                 
+                # මේ මාසයේ දත්ත පමණක් තෝරා ගැනීම
                 current_month = date.today().month
                 current_year = date.today().year
                 
                 this_month_df = df[
-                    (df['දිනය'].dt.month == current_month) & 
-                    (df['දිනය'].dt.year == current_year)
+                    (df['දිනය_converted'].dt.month == current_month) & 
+                    (df['දිනය_converted'].dt.year == current_year)
                 ]
                 
+                # --- CALCULATION ---
                 if not this_month_df.empty:
-                    # Metrics Calculation
                     income = this_month_df[this_month_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
                     expense = this_month_df[this_month_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
                     balance = income - expense
@@ -106,32 +111,32 @@ if sheet:
                     c2.metric("💸 වියදම", f"Rs. {expense:,.2f}")
                     c3.metric("💵 ඉතිරිය", f"Rs. {balance:,.2f}")
                     
-                    # --- CHART SECTION (Updated) ---
+                    # --- CHART ---
                     st.write("---")
                     st.subheader("📊 වියදම් විග්‍රහය")
-                    
                     expenses_only = this_month_df[this_month_df['වර්ගය'] == 'වියදම්']
                     
                     if not expenses_only.empty:
-                        # කාණ්ඩ අනුව එකතු කිරීම (Group By)
                         pie_data = expenses_only.groupby('කාණ්ඩය')['මුදල'].sum().reset_index()
-
-                        # Pie Chart
-                        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය', 
-                                     title='මේ මාසයේ වියදම් වර්ගීකරණය',
-                                     hole=0.5)
-                        
-                        # ප්‍රතිශතය සහ නම චාට් එක ඇතුළේ පෙන්වීම
+                        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය', title='වියදම් වෙන්වූ අයුරු', hole=0.5)
                         fig.update_traces(textposition='inside', textinfo='percent+label')
-                        
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.info("ප්‍රස්තාරය පෙන්වීමට තරම් වියදම් දත්ත නැත.")
-                        
                 else:
-                    st.info("මේ මාසය සඳහා දත්ත තවම නැත.")
+                    st.warning(f"⚠️ {current_year} වසරේ {current_month} මාසය සඳහා දත්ත හමු නොවුණි.")
             else:
-                st.error("Error: 'දිනය' Column එක හමුවුනේ නැත.")
+                st.error("Error: 'දිනය' Column එක Sheet එකේ සොයාගත නොහැක.")
+
+            # --- 🛠️ DEBUG SECTION (මේක Click කරලා බලන්න) ---
+            with st.expander("🛠️ දත්ත පරීක්ෂාව (Click Here to Debug)"):
+                st.write("Python වලට පෙනෙන දත්ත (Raw Data):")
+                st.dataframe(df.head())
+                
+                if 'දිනය_converted' in df.columns:
+                    st.write("දින කියවාගත් ආකාරය (NaT තිබේ නම් දින ආකෘතිය වැරදියි):")
+                    st.dataframe(df[['දිනය', 'දිනය_converted', 'වර්ගය', 'මුදල']])
+                
         else:
             st.info("Sheet එකේ දත්ත කිසිවක් නැත.")
 
