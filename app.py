@@ -63,14 +63,13 @@ if submit:
     else:
         st.warning("කරුණාකර මුදලක් ඇතුළත් කරන්න.")
 
-# --- 📊 MONTHLY SUMMARY (FIXED FOR CURRENCY) ---
+# --- 📊 MONTHLY SUMMARY & LIST ---
 st.markdown("---")
 st.subheader("📅 මාසික සාරාංශය")
 
 sheet = connect_to_gsheet()
 if sheet:
     try:
-        # දත්ත ඔක්කොම Text විදියට ගේනවා (ආරක්ෂිතයි)
         all_data = sheet.get_all_values()
         
         if len(all_data) > 1:
@@ -78,31 +77,29 @@ if sheet:
             rows = all_data[1:]
             df = pd.DataFrame(rows, columns=headers)
             
-            # 1. Headers සුද්ද කිරීම
-            df.columns = df.columns.str.strip()
+            # --- Cleaning & Formatting ---
+            df.columns = df.columns.str.strip() # Remove extra spaces from headers
 
-            # 2. මුදල් පිරිසිදු කිරීම (වැදගත්ම කොටස)
             if 'මුදල' in df.columns:
-                # මුලින්ම 'Rs.' සහ 'Rs' අයින් කරනවා
+                # Rs. and commas cleaning
                 df['මුදල'] = df['මුදල'].astype(str).str.replace(r'Rs\.?', '', regex=True)
-                # ඊට පස්සේ කොමා (,) අයින් කරනවා
                 df['මුදල'] = df['මුදල'].str.replace(',', '', regex=False)
-                # දැන් ඉලක්කම් බවට හරවනවා
                 df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
             
-            # 3. දිනය සහ ගණනය කිරීම්
             if 'දිනය' in df.columns:
                 df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce')
                 
+                # Filter for current month
                 current_month = date.today().month
                 current_year = date.today().year
                 
                 this_month_df = df[
                     (df['දිනය_converted'].dt.month == current_month) & 
                     (df['දිනය_converted'].dt.year == current_year)
-                ]
+                ].copy() # Make a copy to avoid warnings
                 
                 if not this_month_df.empty:
+                    # Metrics
                     income = this_month_df[this_month_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
                     expense = this_month_df[this_month_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
                     balance = income - expense
@@ -124,6 +121,26 @@ if sheet:
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.info("ප්‍රස්තාරය පෙන්වීමට තරම් වියදම් දත්ත නැත.")
+
+                    # --- LIST VIEW (අලුතින් එකතු කළ කොටස) ---
+                    st.write("---")
+                    st.subheader("📝 වියදම් ලැයිස්තුව")
+
+                    # දිනය ලස්සනට පෙන්වීම (YYYY-MM-DD)
+                    this_month_df['දිනය'] = this_month_df['දිනය_converted'].dt.strftime('%Y-%m-%d')
+                    
+                    # අලුත් දේවල් උඩින් පෙන්වන්න (Sort Descending)
+                    this_month_df = this_month_df.sort_values(by='දිනය_converted', ascending=False)
+
+                    # පෙන්විය යුතු Columns ටික තෝරා ගැනීම (අවශ්‍ය දේ පමණයි)
+                    # මෙතන 'දිනය_converted' අයින් කරලා ලස්සන 'දිනය' තීරුව ගන්නවා
+                    columns_to_show = ['දිනය', 'ඇතුළත් කළේ', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'ගෙවූ ක්‍රමය', 'සටහන්']
+                    
+                    # හරියටම තියෙන Columns ටික විතරක් පෙන්වන්න (Error නොවෙන්න)
+                    final_cols = [c for c in columns_to_show if c in this_month_df.columns]
+                    
+                    st.dataframe(this_month_df[final_cols], use_container_width=True)
+
                 else:
                     st.warning("මේ මාසය සඳහා දත්ත තවම හමු නොවුණි.")
             else:
