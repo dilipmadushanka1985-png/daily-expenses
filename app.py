@@ -3,15 +3,16 @@ import gspread
 import pandas as pd
 import plotly.express as px
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import date
+from datetime import date, timedelta
 
-# --- සැකසුම් ---
+# --- සැකසුම් (Settings) ---
 SHEET_NAME = "My Daily Expenses"
 
 # --- Google Sheets සම්බන්ධ කිරීම ---
 def connect_to_gsheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Streamlit Secrets මගින් credentials ලබා ගැනීම
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
@@ -20,133 +21,149 @@ def connect_to_gsheet():
         st.error(f"සම්බන්ධතා දෝෂයක්: {e}")
         return None
 
-# --- App Layout ---
-st.set_page_config(page_title="Daily Tracker", layout="centered")
-st.title("💰 මගේ දෛනික වියදම්")
+# --- Page Layout සැකසීම ---
+st.set_page_config(page_title="BYD Daily Tracker", layout="wide", page_icon="📈")
 
-# --- Form Section ---
-trans_type = st.radio("වර්ගය", ["වියදම්", "ආදායම්"], horizontal=True)
-
-with st.form("entry_form", clear_on_submit=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        today = st.date_input("දිනය", date.today())
-    with col2:
-        user_name = st.selectbox("නම", ["Mr. Dileepa", "Mrs. Nilupa"])
-
-    if trans_type == "වියදම්":
-        category = st.selectbox("කාණ්ඩය", ["ආහාර වියදම්", "ගමන් වියදම්", "බිල්පත් ගෙවීම්", "අත්‍යාවශ්‍ය ද්‍රව්‍ය", "වාහන නඩත්තු", "රෝහල් වියදම්", "වෙනත්"])
-        amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("ගෙවූ ක්‍රමය", ["Cash", "Card", "Online Transfer"])
-        bill_no = st.text_input("බිල් අංකය")
-        location = st.text_input("ස්ථානය")
-    else:
-        category = st.selectbox("ආදායම් වර්ගය", ["Salary", "Bata", "Rent Income", "Other"])
-        amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = "Bank/Cash"
-        bill_no = ""
-        location = ""
-
-    remarks = st.text_area("සටහන්")
-    submit = st.form_submit_button("සේව් කරන්න")
-
-if submit:
-    if amount > 0:
-        sheet = connect_to_gsheet()
-        if sheet:
-            try:
-                row = [str(today), user_name, trans_type, category, amount, payment_method, bill_no, location, remarks]
-                sheet.append_row(row)
-                st.success(f"✅ {trans_type} ඇතුළත් කළා: රු. {amount}")
-            except Exception as e:
-                st.error(f"Error: {e}")
-    else:
-        st.warning("කරුණාකර මුදලක් ඇතුළත් කරන්න.")
-
-# --- 📊 MONTHLY SUMMARY & LIST ---
+# Header
+st.markdown("<h1 style='text-align: center; color: #003366;'>💰 BYD දෛනික වියදම් කළමනාකරු</h1>", unsafe_allow_html=True)
 st.markdown("---")
-st.subheader("📅 මාසික සාරාංශය")
+
+# --- 1. දත්ත ඇතුළත් කිරීමේ පෝරමය (Data Entry) ---
+with st.expander("➕ අලුත් ගනුදෙනුවක් ඇතුළත් කරන්න (මෙතැන ඔබන්න)", expanded=False):
+    trans_type = st.radio("ගනුදෙනු වර්ගය:", ["වියදම්", "ආදායම්"], horizontal=True)
+    
+    with st.form("entry_form", clear_on_submit=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            entry_date = st.date_input("දිනය", date.today())
+        with c2:
+            user = st.selectbox("නම", ["Mr. Dileepa", "Mrs. Nilupa"])
+        with c3:
+            # BYD Promotion සඳහා වෙනම කාණ්ඩයක් එකතු කර ඇත
+            if trans_type == "වියදම්":
+                cat = st.selectbox("කාණ්ඩය", ["ආහාර", "ගමන්", "බිල්පත්", "අත්‍යාවශ්‍ය", "වාහන", "රෝහල්", "BYD Promotion", "වෙනත්"])
+            else:
+                cat = st.selectbox("ආදායම් වර්ගය", ["Salary", "Bata", "Rent", "Other"])
+
+        c4, c5 = st.columns(2)
+        with c4:
+            amt = st.number_input("මුදල (රු.)", min_value=0.0, step=100.0)
+        with c5:
+            pay_method = st.selectbox("ක්‍රමය", ["Cash", "Card", "Online"])
+
+        rem = st.text_area("අමතර සටහන්")
+        
+        submit_btn = st.form_submit_button("සේව් කරන්න")
+
+        if submit_btn and amt > 0:
+            sheet = connect_to_gsheet()
+            if sheet:
+                try:
+                    # Google Sheet එකේ Headers: දිනය, නම, වර්ගය, කාණ්ඩය, මුදල, ගෙවූ ක්‍රමය, සටහන්
+                    row = [str(entry_date), user, trans_type, cat, amt, pay_method, rem]
+                    sheet.append_row(row)
+                    st.success(f"✅ {trans_type} ඇතුළත් කළා: රු. {amt}")
+                    # දත්ත යැවූ පසු පිටුව refresh වේ
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"දත්ත යැවීමේ දෝෂයක්: {e}")
+
+# --- 2. වාර්තා සහ සාරාංශය (Dashboard) ---
+st.subheader("📊 වාර්තා සහ විග්‍රහය")
 
 sheet = connect_to_gsheet()
 if sheet:
-    try:
-        all_data = sheet.get_all_values()
+    # සියලු දත්ත ලබා ගැනීම
+    data = sheet.get_all_records()
+    
+    if data:
+        df = pd.DataFrame(data)
         
-        if len(all_data) > 1:
-            headers = all_data[0]
-            rows = all_data[1:]
-            df = pd.DataFrame(rows, columns=headers)
-            
-            # --- Cleaning & Formatting ---
-            df.columns = df.columns.str.strip() # Remove extra spaces from headers
+        # දත්ත පිරිසිදු කිරීම (Data Cleaning)
+        # මුදල තීරුව අංක බවට පත් කිරීම
+        if 'මුදල' in df.columns:
+            df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
+        
+        # දිනය තීරුව Date Format එකට හැරවීම
+        if 'දිනය' in df.columns:
+            df['දිනය'] = pd.to_datetime(df['දිනය'], errors='coerce')
 
-            if 'මුදල' in df.columns:
-                # Rs. and commas cleaning
-                df['මුදල'] = df['මුදල'].astype(str).str.replace(r'Rs\.?', '', regex=True)
-                df['මුදල'] = df['මුදල'].str.replace(',', '', regex=False)
-                df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
-            
-            if 'දිනය' in df.columns:
-                df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce')
-                
-                # Filter for current month
-                current_month = date.today().month
-                current_year = date.today().year
-                
-                this_month_df = df[
-                    (df['දිනය_converted'].dt.month == current_month) & 
-                    (df['දිනය_converted'].dt.year == current_year)
-                ].copy() # Make a copy to avoid warnings
-                
-                if not this_month_df.empty:
-                    # Metrics
-                    income = this_month_df[this_month_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
-                    expense = this_month_df[this_month_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
-                    balance = income - expense
-                    
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("💰 ආදායම", f"Rs. {income:,.2f}")
-                    c2.metric("💸 වියදම", f"Rs. {expense:,.2f}")
-                    c3.metric("💵 ඉතිරිය", f"Rs. {balance:,.2f}")
-                    
-                    # --- CHART ---
-                    st.write("---")
-                    st.subheader("📊 වියදම් විග්‍රහය")
-                    expenses_only = this_month_df[this_month_df['වර්ගය'] == 'වියදම්']
+            # --- Date Range Filter (දින පරාසය තේරීම) ---
+            col_date1, col_date2 = st.columns(2)
+            with col_date1:
+                # Default: මේ මාසයේ මුල සිට
+                default_start = date(date.today().year, date.today().month, 1)
+                start_date = st.date_input("ආරම්භක දිනය", default_start)
+            with col_date2:
+                # Default: අද දිනය දක්වා
+                end_date = st.date_input("අවසාන දිනය", date.today())
+
+            # දින පරාසයට අදාළ දත්ත පමණක් වෙන් කර ගැනීම
+            mask = (df['දිනය'].dt.date >= start_date) & (df['දිනය'].dt.date <= end_date)
+            filtered_df = df.loc[mask]
+
+            if not filtered_df.empty:
+                # Metrics ගණනය කිරීම
+                inc = filtered_df[filtered_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
+                exp = filtered_df[filtered_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
+                bal = inc - exp
+
+                # කාඩ්පත් (Metrics) පෙන්වීම
+                m1, m2, m3 = st.columns(3)
+                m1.metric("මුළු ආදායම (Income)", f"රු. {inc:,.2f}")
+                m2.metric("මුළු වියදම (Expense)", f"රු. {exp:,.2f}", delta=f"-{exp:,.2f}", delta_color="inverse")
+                m3.metric("ඉතිරිය (Balance)", f"රු. {bal:,.2f}")
+
+                st.markdown("---")
+
+                # --- කොටස් දෙකකට බෙදීම (ප්‍රස්ථාරය සහ ලිස්ට් එක) ---
+                chart_col, list_col = st.columns([1, 2])
+
+                # 1. පයි ප්‍රස්ථාරය (Pie Chart)
+                with chart_col:
+                    st.write("##### 📉 වියදම් බෙදී ගිය ආකාරය")
+                    expenses_only = filtered_df[filtered_df['වර්ගය'] == 'වියදම්']
                     
                     if not expenses_only.empty:
-                        pie_data = expenses_only.groupby('කාණ්ඩය')['මුදල'].sum().reset_index()
-                        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය', title='වියදම් වෙන්වූ අයුරු', hole=0.5)
-                        fig.update_traces(textposition='inside', textinfo='percent+label')
+                        fig = px.pie(expenses_only, values='මුදල', names='කාණ්ඩය', hole=0.4)
+                        fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
                         st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.info("ප්‍රස්තාරය පෙන්වීමට තරම් වියදම් දත්ත නැත.")
+                        st.info("තෝරාගත් කාලය තුළ වියදම් නැත.")
 
-                    # --- LIST VIEW (අලුතින් එකතු කළ කොටස) ---
-                    st.write("---")
-                    st.subheader("📝 වියදම් ලැයිස්තුව")
-
-                    # දිනය ලස්සනට පෙන්වීම (YYYY-MM-DD)
-                    this_month_df['දිනය'] = this_month_df['දිනය_converted'].dt.strftime('%Y-%m-%d')
+                # 2. වර්ණ ගැන්වූ දත්ත ලැයිස්තුව (Colored Data Table)
+                with list_col:
+                    st.write("##### 📝 ගනුදෙනු ලැයිස්තුව")
                     
-                    # අලුත් දේවල් උඩින් පෙන්වන්න (Sort Descending)
-                    this_month_df = this_month_df.sort_values(by='දිනය_converted', ascending=False)
+                    # වර්ණ ගැන්වීමේ Function එක
+                    def color_rows(row):
+                        if row['වර්ගය'] == 'ආදායම්':
+                            # ආදායම් -> නිල් පාට (Blue)
+                            return ['color: blue; font-weight: bold'] * len(row)
+                        elif row['වර්ගය'] == 'වියදම්':
+                            # වියදම් -> රතු පාට (Red)
+                            return ['color: red'] * len(row)
+                        else:
+                            return ['color: black'] * len(row)
 
-                    # පෙන්විය යුතු Columns ටික තෝරා ගැනීම (අවශ්‍ය දේ පමණයි)
-                    # මෙතන 'දිනය_converted' අයින් කරලා ලස්සන 'දිනය' තීරුව ගන්නවා
-                    columns_to_show = ['දිනය', 'ඇතුළත් කළේ', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'ගෙවූ ක්‍රමය', 'සටහන්']
+                    # දින පරාසයට අදාළ දත්ත Sort කිරීම (අලුත් දේවල් උඩින්)
+                    display_df = filtered_df.sort_values(by='දිනය', ascending=False).copy()
+                    # දිනය පෙන්වන Format එක වෙනස් කිරීම (YYYY-MM-DD)
+                    display_df['දිනය'] = display_df['දිනය'].dt.strftime('%Y-%m-%d')
                     
-                    # හරියටම තියෙන Columns ටික විතරක් පෙන්වන්න (Error නොවෙන්න)
-                    final_cols = [c for c in columns_to_show if c in this_month_df.columns]
+                    # පෙන්විය යුතු තීරු පමණක් තෝරා ගැනීම
+                    final_cols = ['දිනය', 'නම', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'සටහන්']
+                    # තීරු තිබේ දැයි පරීක්ෂා කර පෙන්වීම
+                    cols_to_use = [c for c in final_cols if c in display_df.columns]
                     
-                    st.dataframe(this_month_df[final_cols], use_container_width=True)
+                    # වර්ණ යෙදීම (Pandas Styler)
+                    styled_df = display_df[cols_to_use].style.apply(color_rows, axis=1)
+                    
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-                else:
-                    st.warning("මේ මාසය සඳහා දත්ත තවම හමු නොවුණි.")
             else:
-                st.error("Error: 'දිනය' Column එක හමු නොවුණි.")
+                st.warning(f"{start_date} සිට {end_date} දක්වා දත්ත කිසිවක් හමු නොවුණි.")
         else:
-            st.info("Sheet එකේ දත්ත කිසිවක් නැත.")
-
-    except Exception as e:
-        st.error(f"Calculation Error: {e}")
+            st.error("Sheet එකේ 'දිනය' හෝ 'මුදල' තීරු සොයාගත නොහැක. කරුණාකර Headers පරීක්ෂා කරන්න.")
+    else:
+        st.info("Sheet එකේ දත්ත කිසිවක් නැත.")
