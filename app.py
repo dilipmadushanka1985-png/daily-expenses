@@ -22,7 +22,7 @@ def connect_to_gsheet():
 
 # --- App Layout ---
 st.set_page_config(page_title="Daily Tracker", layout="centered")
-st.title("💰 මගේ දෛනික වියදම්")
+st.title("💰 දෛනික වියදම් ලේඛණය")
 
 # --- Form Section ---
 trans_type = st.radio("වර්ගය", ["වියදම්", "ආදායම්"], horizontal=True)
@@ -150,3 +150,4 @@ if sheet:
 
     except Exception as e:
         st.error(f"Calculation Error: {e}")
+
