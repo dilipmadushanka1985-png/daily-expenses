@@ -257,8 +257,9 @@ if not filtered_df.empty:
     )
 
     # ────────────────────────────────────────────────
+        # ... previous code ...
+
     # DOWNLOAD BUTTONS
-    # ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("බාගත කරගන්න")
 
@@ -273,65 +274,41 @@ if not filtered_df.empty:
 
     # PDF
     if PDF_AVAILABLE and not filtered_df.empty:
-    pdf_buffer = BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-    elements = []
-    styles = getSampleStyleSheet()
+        pdf_buffer = BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
 
-    # Register Sinhala font
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    pdfmetrics.registerFont(TTFont('SinhalaFont', 'NotoSansSinhala-Regular.ttf'))  # font file name match කරන්න
+        elements.append(Paragraph(f"වියදම් වාර්තාව: {start_date} සිට {end_date} දක්වා", styles['Title']))
+        elements.append(Paragraph(f"ආදායම: Rs. {income:,.2f} | වියදම: Rs. {expense:,.2f} | ඉතිරිය: Rs. {balance:,.2f}", styles['Normal']))
 
-    # Sinhala support සහිත style එකක් හදන්න
-    from reportlab.lib.styles import ParagraphStyle
-    sinhala_style = ParagraphStyle(
-        name='Sinhala',
-        fontName='SinhalaFont',
-        fontSize=12,
-        leading=14,
-        alignment=0  # left align
-    )
-    title_style = ParagraphStyle(
-        name='TitleSinhala',
-        fontName='SinhalaFont',
-        fontSize=16,
-        leading=20,
-        alignment=1  # center
-    )
+        table_data = [final_cols] + filtered_df[final_cols].astype(str).values.tolist()
+        t = Table(table_data)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.green),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,0), 12),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
+            ('GRID', (0,0), (-1,-1), 1, colors.grey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        elements.append(t)
+        doc.build(elements)
+        pdf_buffer.seek(0)
 
-    # Title සහ summary Sinhala font එකෙන්
-    elements.append(Paragraph(f"වියදම් වාර්තාව: {start_date} සිට {end_date} දක්වා", title_style))
-    elements.append(Paragraph(f"ආදායම: Rs. {income:,.2f} | වියදම: Rs. {expense:,.2f} | ඉතිරිය: Rs. {balance:,.2f}", sinhala_style))
-
-    # Table එකටත් Sinhala font apply කරන්න
-    table_data = [final_cols] + filtered_df[final_cols].astype(str).values.tolist()
-    t = Table(table_data)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.green),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,-1), 'SinhalaFont'),  # මෙතන Sinhala font එක දාන්න
-        ('FONTSIZE', (0,0), (-1,0), 12),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('GRID', (0,0), (-1,-1), 1, colors.grey),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-    ]))
-    elements.append(t)
-
-    doc.build(elements)
-    pdf_buffer.seek(0)
-
-    st.download_button(
-        label="📄 PDF ලෙස බාගත කරන්න",
-        data=pdf_buffer,
-        file_name=f"expenses_{start_date}_to_{end_date}.pdf",
-        mime="application/pdf"
-    )
+        st.download_button(
+            label="📄 PDF ලෙස බාගත කරන්න",
+            data=pdf_buffer,
+            file_name=f"expenses_{start_date}_to_{end_date}.pdf",
+            mime="application/pdf"
+        )
 else:
     st.info("තෝරාගත් කාල පරාසය තුළ දත්ත නැහැ හෝ sheet එක හිස් යි.")
 
 st.markdown("---")
 st.caption("App by Machan Dilip | Powered by Streamlit & Google Sheets")
+
 
 
