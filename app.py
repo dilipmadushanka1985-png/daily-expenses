@@ -107,7 +107,7 @@ with st.form("entry_form", clear_on_submit=True):
     with col1:
         today = st.date_input("දිනය", date.today())
     with col2:
-        user_name = st.session_state.user_name   # auto-filled — no selectbox needed
+        user_name = st.session_state.user_name   # auto-filled
 
     if trans_type == "වියදම්":
         category = st.selectbox("කාණ්ඩය", [
@@ -115,13 +115,17 @@ with st.form("entry_form", clear_on_submit=True):
             "අත්‍යාවශ්‍ය ද්‍රව්‍ය", "වාහන නඩත්තු", "රෝහල් වියදම්", "වෙනත්"
         ])
         amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("ගෙවූ ක්‍රමය", ["Cash", "Card", "Online Transfer"])
+        payment_method = st.selectbox("ගෙවූ ක්‍රමය", [
+            "මුදලින් ගෙවීම්", "කාඩ්පත් ගෙවීම්", "අන්තර්ජාල ගෙවීම්"
+        ])
         bill_no = st.text_input("බිල් අංකය")
         location = st.text_input("ස්ථානය")
     else:
-        category = st.selectbox("ආදායම් වර්ගය", ["Salary", "Bata", "Rent Income", "Other"])
+        category = st.selectbox("ආදායම් වර්ගය", [
+            "මාසික වැටුප", "සංයුක්ත දීමනාව", "ගෙවල් කුලිය", "වෙනත් ආදායම්"
+        ])
         amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = "Bank/Cash"
+        payment_method = "බැංකුව / මුදල"   # ආදායම් සඳහා fixed
         bill_no = ""
         location = ""
 
