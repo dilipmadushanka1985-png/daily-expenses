@@ -128,11 +128,11 @@ def load_data():
 df = load_data()
 
 # Debug lines
-st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
-if 'මුදල' in df.columns:
-    st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
-    st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
-    st.write("Debug: මුදල total sum:", df['මුදල'].sum())
+#st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
+#if 'මුදල' in df.columns:
+    #st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
+    #st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
+    #st.write("Debug: මුදල total sum:", df['මුදල'].sum())
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -307,3 +307,4 @@ else:
 
 st.markdown("---")
 st.caption("App by Machan Dilip | Powered by Streamlit & Google Sheets")
+
