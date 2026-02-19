@@ -101,7 +101,7 @@ st.markdown(f"**සාදරයෙන් පිළිගන්නවා** — {s
 # ────────────────────────────────────────────────
 # DATA LOAD with CACHE
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=30)  # Reduced ttl for faster updates
+@st.cache_data(ttl=30)
 def load_data():
     sheet = connect_to_gsheet()
     if not sheet:
@@ -114,8 +114,8 @@ def load_data():
     df = pd.DataFrame(all_data[1:], columns=headers)
     
     if 'මුදල' in df.columns:
-        # Improved cleaning: remove all non-numeric except dot
-        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'[^0-9.]', '', regex=True)
+        # Fixed cleaning for "Rs.840.00", "Rs.3,288.00" etc.
+        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
         df['මුදල'] = df['මුදල'].str.replace(r'\.+', '.', regex=True)
         df['මුදල'] = df['මුදල'].replace(['', '.'], '0')
         df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
@@ -127,9 +127,12 @@ def load_data():
 
 df = load_data()
 
-# Debug: Check මුදල column
+# Debug lines
 st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
-st.write("Debug: මුදල sample:", df['මුදල'].head(5) if 'මුදල' in df.columns else "No data")
+if 'මුදල' in df.columns:
+    st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
+    st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
+    st.write("Debug: මුදල total sum:", df['මුදල'].sum())
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -178,7 +181,7 @@ if submit:
                     user_name,
                     trans_type,
                     category,
-                    amount,
+                    f"{amount:.2f}",  # Clean string without Rs. or commas
                     payment_method,
                     bill_no,
                     location,
