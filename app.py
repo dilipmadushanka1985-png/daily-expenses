@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab → requirements.txt එකට එකතු කරන්න: reportlab
+# For PDF download - add reportlab to requirements.txt
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab library එක install කරගන්න (pip install reportlab)")
+    st.warning("PDF download requires reportlab library (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -53,37 +53,37 @@ def connect_to_gsheet():
         client = gspread.authorize(credentials)
         return client.open(SHEET_NAME).sheet1
     except Exception as e:
-        st.error(f"Google Sheets සම්බන්ධතාවේ දෝෂයක්: {str(e)}")
+        st.error(f"Google Sheets connection error: {str(e)}")
         return None
 
 # ────────────────────────────────────────────────
 # LOGIN / LOGOUT
 # ────────────────────────────────────────────────
 def login_page():
-    st.title("🔐 ලොග් වෙන්න - දෛනික වියදම් ට්‍රැකර්")
+    st.title("🔐 Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("පරිශීලක නම", placeholder="dileepa හෝ nilupa")
-        password = st.text_input("මුරපදය", type="password")
-        if st.button("ලොග් වෙන්න", use_container_width=True):
+        username = st.text_input("Username", placeholder="dileepa or nilupa")
+        password = st.text_input("Password", type="password")
+        if st.button("Login", use_container_width=True):
             if username in USERS:
                 input_hash = hashlib.sha256(password.encode()).hexdigest()
                 if input_hash == USERS[username]["password_hash"]:
                     st.session_state.logged_in = True
                     st.session_state.user = username
                     st.session_state.user_name = USERS[username]["display_name"]
-                    st.success(f"සාදරයෙන් පිළිගන්නවා, {st.session_state.user_name}!")
+                    st.success(f"Welcome, {st.session_state.user_name}!")
                     st.rerun()
                 else:
-                    st.error("මුරපදය වැරදියි!")
+                    st.error("Incorrect password!")
             else:
-                st.error("මෙම පරිශීලක නම හමු නොවුණි!")
+                st.error("User not found!")
 
 def logout_button():
-    if st.sidebar.button("🚪 ලොග් ඉවත් වෙන්න"):
+    if st.sidebar.button("🚪 Logout"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.success("ඔබ ලොග් ඉවත් වුණා!")
+        st.success("You have logged out!")
         st.rerun()
 
 # ────────────────────────────────────────────────
@@ -95,8 +95,8 @@ if not st.session_state.logged_in:
 
 st.set_page_config(page_title="Daily Tracker", layout="wide")
 logout_button()
-st.title("💰 දෛනික වියදම් ලේඛණය")
-st.markdown(f"**සාදරයෙන් පිළිගන්නවා** — {st.session_state.user_name}")
+st.title("💰 Daily Expense Tracker")
+st.markdown(f"**Welcome** — {st.session_state.user_name}")
 
 # ────────────────────────────────────────────────
 # DATA LOAD with CACHE
@@ -113,63 +113,55 @@ def load_data():
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    if 'මුදල' in df.columns:
-        # Fixed cleaning for "Rs.840.00", "Rs.3,288.00" etc.
-        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
-        df['මුදල'] = df['මුදල'].str.replace(r'\.+', '.', regex=True)
-        df['මුදල'] = df['මුදල'].replace(['', '.'], '0')
-        df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
+    if 'Amount' in df.columns:
+        df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
+        df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
+        df['Amount'] = df['Amount'].replace(['', '.'], '0')
+        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    if 'දිනය' in df.columns:
-        df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce', format='%Y-%m-%d')
+    if 'Date' in df.columns:
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
     
     return df
 
 df = load_data()
 
-# Debug lines (commented out)
-# st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
-# if 'මුදල' in df.columns:
-#     st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
-#     st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
-#     st.write("Debug: මුදල total sum:", df['මුදල'].sum())
-
 # ────────────────────────────────────────────────
 # ENTRY FORM
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("➕ නව ඇතුළත් කිරීමක්")
-trans_type = st.radio("වර්ගය", ["වියදම්", "ආදායම්"], horizontal=True)
+st.subheader("➕ Add New Entry")
+trans_type = st.radio("Type", ["Expense", "Income"], horizontal=True)
 
 with st.form("entry_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
-        today = st.date_input("දිනය", date.today())
+        today = st.date_input("Date", date.today())
     with col2:
         user_name = st.session_state.user_name  # auto-filled
 
-    if trans_type == "වියදම්":
-        category = st.selectbox("කාණ්ඩය", [
-            "ආහාර වියදම්", "ගමන් වියදම්", "බිල්පත් ගෙවීම්",
-            "අත්‍යාවශ්‍ය ද්‍රව්‍ය", "වාහන නඩත්තු", "රෝහල් වියදම්", "වෙනත්"
+    if trans_type == "Expense":
+        category = st.selectbox("Category", [
+            "Food Expenses", "Transport", "Bills",
+            "Essential Items", "Vehicle Maintenance", "Hospital Expenses", "Other"
         ])
-        amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("ගෙවූ ක්‍රමය", [
-            "මුදලින් ගෙවීම්", "කාඩ්පත් ගෙවීම්", "අන්තර්ජාල ගෙවීම්"
+        amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
+        payment_method = st.selectbox("Payment Method", [
+            "Cash", "Card", "Online Transfer"
         ])
-        bill_no = st.text_input("බිල් අංකය")
-        location = st.text_input("ස්ථානය")
+        bill_no = st.text_input("Bill Number")
+        location = st.text_input("Location")
     else:
-        category = st.selectbox("ආදායම් වර්ගය", [
-            "මාසික වැටුප", "සංයුක්ත දීමනාව", "ගෙවල් කුලිය", "වෙනත් ආදායම්"
+        category = st.selectbox("Income Type", [
+            "Monthly Salary", "Allowance", "Rent Income", "Other Income"
         ])
-        amount = st.number_input("මුදල (Rs.)", min_value=0.0, step=100.0)
-        payment_method = "බැංකුව / මුදල"
+        amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
+        payment_method = "Bank/Cash"
         bill_no = ""
         location = ""
 
-    remarks = st.text_area("සටහන්")
-    submit = st.form_submit_button("සේව් කරන්න")
+    remarks = st.text_area("Remarks")
+    submit = st.form_submit_button("Save")
 
 if submit:
     if amount > 0:
@@ -181,39 +173,39 @@ if submit:
                     user_name,
                     trans_type,
                     category,
-                    f"{amount:.2f}",  # Clean string without Rs. or commas
+                    f"{amount:.2f}",
                     payment_method,
                     bill_no,
                     location,
                     remarks
                 ]
                 sheet.append_row(row)
-                st.success(f"✅ {trans_type} ඇතුළත් කළා: රු. {amount:,.2f}")
+                st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error(f"දත්ත සේව් කිරීමේ දෝෂයක්: {e}")
+                st.error(f"Error saving data: {e}")
     else:
-        st.warning("කරුණාකර මුදලක් ඇතුළත් කරන්න.")
+        st.warning("Please enter a valid amount.")
 
 # ────────────────────────────────────────────────
 # DATE RANGE FILTER & VIEW
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("📅 Custom Date Range බලන්න")
+st.subheader("📅 Custom Date Range")
 
 col_start, col_end = st.columns(2)
 with col_start:
     default_start = date.today().replace(day=1)
-    start_date = st.date_input("ආරම්භය", value=default_start, min_value=date(2023,1,1), max_value=date.today())
+    start_date = st.date_input("Start Date", value=default_start, min_value=date(2023,1,1), max_value=date.today())
 
 with col_end:
-    end_date = st.date_input("අවසානය", value=date.today(), min_value=start_date, max_value=date.today())
+    end_date = st.date_input("End Date", value=date.today(), min_value=start_date, max_value=date.today())
 
-if not df.empty and 'දිනය_converted' in df.columns:
+if not df.empty and 'Date_converted' in df.columns:
     filtered_df = df[
-        (df['දිනය_converted'] >= pd.to_datetime(start_date)) &
-        (df['දිනය_converted'] <= pd.to_datetime(end_date))
+        (df['Date_converted'] >= pd.to_datetime(start_date)) &
+        (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
 else:
     filtered_df = pd.DataFrame()
@@ -221,37 +213,37 @@ else:
 st.write("Debug: Filtered rows:", len(filtered_df))
 
 if not filtered_df.empty:
-    income = filtered_df[filtered_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
-    expense = filtered_df[filtered_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
+    income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
+    expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
     balance = income - expense
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("💰 ආදායම", f"Rs. {income:,.2f}")
-    c2.metric("💸 වියදම", f"Rs. {expense:,.2f}")
-    c3.metric("💵 ඉතිරිය", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
+    c1.metric("💰 Income", f"Rs. {income:,.2f}")
+    c2.metric("💸 Expense", f"Rs. {expense:,.2f}")
+    c3.metric("💵 Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
     # Pie Chart
-    st.subheader("📊 වියදම් විග්‍රහය")
-    expenses_only = filtered_df[filtered_df['වර්ගය'] == 'වියදම්']
+    st.subheader("📊 Expense Breakdown")
+    expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
     if not expenses_only.empty:
-        pie_data = expenses_only.groupby('කාණ්ඩය')['මුදල'].sum().reset_index()
-        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය',
-                     title=f'{start_date} සිට {end_date} දක්වා වියදම් breakdown', hole=0.5)
+        pie_data = expenses_only.groupby('Category')['Amount'].sum().reset_index()
+        fig = px.pie(pie_data, values='Amount', names='Category',
+                     title=f'Expense Breakdown from {start_date} to {end_date}', hole=0.5)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("තෝරාගත් කාලය තුළ වියදම් නැහැ.")
+        st.info("No expenses in the selected period.")
 
     # List View
-    st.subheader("📝 ලැයිස්තුව")
-    filtered_df['දිනය'] = filtered_df['දිනය_converted'].dt.strftime('%Y-%m-%d')
-    filtered_df = filtered_df.sort_values('දිනය_converted', ascending=False)
+    st.subheader("📝 Transaction List")
+    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
+    filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
-    display_cols = ['දිනය', 'නම', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'ගෙවූ ක්‍රමය', 'සටහන්']
+    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
     final_cols = [c for c in display_cols if c in filtered_df.columns]
 
     st.dataframe(
-        filtered_df[final_cols].style.format({'මුදල': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
+        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
         use_container_width=True,
         hide_index=True
     )
@@ -260,12 +252,12 @@ if not filtered_df.empty:
     # DOWNLOAD BUTTONS
     # ────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("බාගත කරගන්න")
+    st.subheader("Download Data")
 
     # CSV
     csv_data = filtered_df[final_cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button(
-        label="📥 CSV ලෙස බාගත කරන්න",
+        label="📥 Download as CSV",
         data=csv_data,
         file_name=f"expenses_{start_date}_to_{end_date}.csv",
         mime="text/csv"
@@ -278,9 +270,10 @@ if not filtered_df.empty:
         elements = []
         styles = getSampleStyleSheet()
 
-        elements.append(Paragraph(f"වියදම් වාර්තාව: {start_date} සිට {end_date} දක්වා", styles['Title']))
-        elements.append(Paragraph(f"ආදායම: Rs. {income:,.2f} | වියදම: Rs. {expense:,.2f} | ඉතිරිය: Rs. {balance:,.2f}", styles['Normal']))
+        elements.append(Paragraph(f"Expense Report: {start_date} to {end_date}", styles['Title']))
+        elements.append(Paragraph(f"Income: Rs. {income:,.2f} | Expense: Rs. {expense:,.2f} | Balance: Rs. {balance:,.2f}", styles['Normal']))
 
+        # Table headers and data in English
         table_data = [final_cols] + filtered_df[final_cols].astype(str).values.tolist()
         t = Table(table_data)
         t.setStyle(TableStyle([
@@ -298,13 +291,13 @@ if not filtered_df.empty:
         pdf_buffer.seek(0)
 
         st.download_button(
-            label="📄 PDF ලෙස බාගත කරන්න",
+            label="📄 Download as PDF",
             data=pdf_buffer,
             file_name=f"expenses_{start_date}_to_{end_date}.pdf",
             mime="application/pdf"
         )
 else:
-    st.info("තෝරාගත් කාල පරාසය තුළ දත්ත නැහැ හෝ sheet එක හිස් යි.")
+    st.info("No data in the selected date range or sheet is empty.")
 
 st.markdown("---")
-st.caption("App by Machan Dilip | Powered by Streamlit & Google Sheets")
+st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
