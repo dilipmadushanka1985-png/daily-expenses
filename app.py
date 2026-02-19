@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF එකට reportlab ඕනේ → requirements.txt එකට එකතු කරන්න: reportlab
+# PDF සඳහා reportlab → requirements.txt එකට එකතු කරන්න: reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -101,7 +101,7 @@ st.markdown(f"**සාදරයෙන් පිළිගන්නවා** — {s
 # ────────────────────────────────────────────────
 # DATA LOAD with CACHE
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=30)  # Reduced ttl for faster updates
 def load_data():
     sheet = connect_to_gsheet()
     if not sheet:
@@ -114,19 +114,22 @@ def load_data():
     df = pd.DataFrame(all_data[1:], columns=headers)
     
     if 'මුදල' in df.columns:
-        df['මුදල'] = (
-            df['මුදල'].astype(str)
-            .str.replace(r'[^\d.]', '', regex=True)
-            .replace(['', '.'], '0')
-        )
+        # Improved cleaning: remove all non-numeric except dot
+        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'[^0-9.]', '', regex=True)
+        df['මුදල'] = df['මුදල'].str.replace(r'\.+', '.', regex=True)
+        df['මුදල'] = df['මුදල'].replace(['', '.'], '0')
         df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
     
     if 'දිනය' in df.columns:
-        df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce', dayfirst=True)
+        df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce', format='%Y-%m-%d')
     
     return df
 
 df = load_data()
+
+# Debug: Check මුදල column
+st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
+st.write("Debug: මුදල sample:", df['මුදල'].head(5) if 'මුදල' in df.columns else "No data")
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -212,6 +215,8 @@ if not df.empty and 'දිනය_converted' in df.columns:
 else:
     filtered_df = pd.DataFrame()
 
+st.write("Debug: Filtered rows:", len(filtered_df))
+
 if not filtered_df.empty:
     income = filtered_df[filtered_df['වර්ගය'] == 'ආදායම්']['මුදල'].sum()
     expense = filtered_df[filtered_df['වර්ගය'] == 'වියදම්']['මුදල'].sum()
@@ -263,7 +268,7 @@ if not filtered_df.empty:
         mime="text/csv"
     )
 
-    # PDF (if library available)
+    # PDF
     if PDF_AVAILABLE and not filtered_df.empty:
         pdf_buffer = BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
