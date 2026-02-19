@@ -127,12 +127,12 @@ def load_data():
 
 df = load_data()
 
-# Debug lines
-#st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
-#if 'මුදල' in df.columns:
-    #st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
-    #st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
-    #st.write("Debug: මුදල total sum:", df['මුදල'].sum())
+# Debug lines (commented out)
+# st.write("Debug: මුදල column dtype:", df['මුදල'].dtype if 'මුදල' in df.columns else "Column not found")
+# if 'මුදල' in df.columns:
+#     st.write("Debug: මුදල raw sample (sheet එකෙන්):", df['මුදල'].head(5).tolist())
+#     st.write("Debug: මුදල cleaned sample:", df['මුදල'].head(5).tolist())
+#     st.write("Debug: මුදල total sum:", df['මුදල'].sum())
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -257,9 +257,8 @@ if not filtered_df.empty:
     )
 
     # ────────────────────────────────────────────────
-        # ... previous code ...
-
     # DOWNLOAD BUTTONS
+    # ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("බාගත කරගන්න")
 
@@ -309,6 +308,3 @@ else:
 
 st.markdown("---")
 st.caption("App by Machan Dilip | Powered by Streamlit & Google Sheets")
-
-
-
