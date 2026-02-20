@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF support - add reportlab to requirements.txt
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab (pip install reportlab)")
+    st.warning("PDF download requires reportlab library (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -36,7 +36,6 @@ USERS = {
     }
 }
 
-# Default headers for new sheets
 DEFAULT_HEADERS = [
     "Date", "Name", "Type", "Category", "Amount",
     "Payment Method", "Bill Number", "Location", "Remarks"
@@ -49,11 +48,8 @@ if "logged_in" not in st.session_state:
     st.session_state.sheet_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION & SHEET CREATION
+# GOOGLE SHEETS CONNECTION & SHEET HANDLING
 # ────────────────────────────────────────────────
-def get_user_sheet_name(username):
-    return f"{username}_Daily_Expenses"
-
 def connect_and_get_sheet(username):
     try:
         scopes = [
@@ -64,24 +60,26 @@ def connect_and_get_sheet(username):
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
 
-        sheet_name = get_user_sheet_name(username)
-        
-        # Try to open existing sheet
-        try:
-            sheet = client.open(sheet_name).sheet1
-        except gspread.exceptions.SpreadsheetNotFound:
-            # Create new spreadsheet if not found
-            spreadsheet = client.create(sheet_name)
+        if username == "Elsha":
+            # Elshaගේ fixed sheet ID එක (ඔයා දුන් link එකෙන් ගත්තා)
+            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
+            spreadsheet = client.open_by_key(SHEET_ID)
             sheet = spreadsheet.sheet1
-            # Set headers
-            sheet.update("A1:I1", [DEFAULT_HEADERS])
-            # Share with service account (optional but good practice)
-            spreadsheet.share(creds_info["client_email"], perm_type='user', role='writer')
-            st.success(f"New sheet created for {username}: {sheet_name}")
+        else:
+            # Dileepa සහ Nilupa සඳහා dynamic sheet
+            sheet_name = f"{username}_Daily_Expenses"
+            try:
+                sheet = client.open(sheet_name).sheet1
+            except gspread.exceptions.SpreadsheetNotFound:
+                spreadsheet = client.create(sheet_name)
+                sheet = spreadsheet.sheet1
+                sheet.update("A1:I1", [DEFAULT_HEADERS])
+                spreadsheet.share(creds_info["client_email"], perm_type='user', role='writer')
+                st.success(f"New sheet created for {username}: {sheet_name}")
         
         return sheet
     except Exception as e:
-        st.error(f"Google Sheets error: {str(e)}")
+        st.error(f"Google Sheets connection error: {str(e)}")
         return None
 
 # ────────────────────────────────────────────────
@@ -100,7 +98,6 @@ def login_page():
                     st.session_state.logged_in = True
                     st.session_state.user = username
                     st.session_state.user_name = USERS[username]["display_name"]
-                    st.session_state.sheet_name = get_user_sheet_name(username)
                     st.success(f"Welcome, {st.session_state.user_name}!")
                     st.rerun()
                 else:
