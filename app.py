@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -42,9 +42,9 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION (separate sheets for Elsha)
+# GOOGLE SHEETS CONNECTION
 # ────────────────────────────────────────────────
-def connect_to_gsheet(username):
+def connect_to_gsheet():
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -53,16 +53,7 @@ def connect_to_gsheet(username):
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-
-        if username in ["Dileepa", "Nilupa"]:
-            # Dileepa + Nilupa එකම sheet එකට
-            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
-        else:  # Elsha
-            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
-
-        spreadsheet = client.open_by_key(SHEET_ID)
-        sheet = spreadsheet.sheet1
-        return sheet
+        return client.open("My Daily Expenses").sheet1
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -74,8 +65,8 @@ def login_page():
     st.title("Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="Username")
-        password = st.text_input("Password", type="password")   # lowercase "password"
+        username = st.text_input("Username", placeholder="Dileepa / Nilupa / Elsha")
+        password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             if username in USERS:
                 input_hash = hashlib.sha256(password.encode()).hexdigest()
@@ -114,7 +105,7 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=5)
 def load_data():
-    sheet = connect_to_gsheet(st.session_state.user)
+    sheet = connect_to_gsheet()
     if not sheet:
         return pd.DataFrame()
     
@@ -177,7 +168,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet(st.session_state.user)
+        sheet = connect_to_gsheet()
         if sheet:
             try:
                 row = [
@@ -241,14 +232,16 @@ if not filtered_df.empty:
         st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Transactions")
-    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
-    filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
+    # Date format: 2026 - Feb - 01
+    filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
 
-    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
-    final_cols = [c for c in display_cols if c in filtered_df.columns]
+    display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
+    final_cols = [c for c in display_cols if c in filtered_df.columns or c == 'Formatted Date']
 
     st.dataframe(
-        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
+        filtered_df[final_cols].style.format({
+            'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"
+        }),
         use_container_width=True,
         hide_index=True
     )
@@ -289,5 +282,3 @@ else:
 
 st.markdown("---")
 st.caption("App by Dilip | Streamlit & Google Sheets")
-
-
