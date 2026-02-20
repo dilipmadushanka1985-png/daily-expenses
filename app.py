@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab → requirements.txt එකට එකතු කරන්න
+# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,13 +16,11 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab library එක install කරගන්න (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
-SHEET_NAME = "My Daily Expenses"
-
 USERS = {
     "Dileepa": {
         "display_name": "Mr. Dileepa Madushanka",
@@ -44,9 +42,9 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION (Updated for separate sheets)
 # ────────────────────────────────────────────────
-def connect_to_gsheet():
+def connect_to_gsheet(username):
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -55,7 +53,19 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open(SHEET_NAME).sheet1
+
+        if username in ["Dileepa", "Nilupa"]:
+            # Dileepa සහ Nilupa දෙන්නාගේ data යන්නේ එකම sheet එකට
+            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
+            spreadsheet = client.open_by_key(SHEET_ID)
+            sheet = spreadsheet.sheet1
+        else:  # Elsha
+            # Elshaගේ data යන්නේ වෙනම sheet එකට
+            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
+            spreadsheet = client.open_by_key(SHEET_ID)
+            sheet = spreadsheet.sheet1
+
+        return sheet
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -107,9 +117,10 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def load_data():
-    sheet = connect_to_gsheet()
+    sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
+    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
         return pd.DataFrame()
@@ -156,9 +167,7 @@ with st.form("entry_form", clear_on_submit=True):
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
         payment_method = st.selectbox("Payment Method", [
-            "Cash",
-            "Card",
-            "Online Transfer"
+            "Cash", "Card", "Online Transfer"
         ])
         bill_no = st.text_input("Bill Number")
         location = st.text_input("Location")
@@ -179,19 +188,19 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet()
+        sheet = connect_to_gsheet(st.session_state.user)
         if sheet:
             try:
                 row = [
-                    str(today),          # දිනය
-                    user_name,           # නම
-                    trans_type,          # වර්ගය
-                    category,            # කාණ්ඩය
-                    f"{amount:.2f}",     # මුදල
-                    payment_method,      # ගෙවූ ක්‍රමය
-                    bill_no,             # බිල් අංකය
-                    location,            # ස්ථානය
-                    remarks              # සටහන්
+                    str(today),
+                    user_name,
+                    trans_type,
+                    category,
+                    f"{amount:.2f}",
+                    payment_method,
+                    bill_no,
+                    location,
+                    remarks
                 ]
                 sheet.append_row(row)
                 st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
@@ -258,9 +267,7 @@ if not filtered_df.empty:
         hide_index=True
     )
 
-    # ────────────────────────────────────────────────
     # DOWNLOAD BUTTONS
-    # ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Download Data")
 
