@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support - add reportlab to requirements.txt
+# PDF සඳහා reportlab → requirements.txt එකට එකතු කරන්න
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,11 +16,13 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab library (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab library එක install කරගන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
+SHEET_NAME = "My Daily Expenses"
+
 USERS = {
     "Dileepa": {
         "display_name": "Mr. Dileepa Madushanka",
@@ -36,21 +38,15 @@ USERS = {
     }
 }
 
-DEFAULT_HEADERS = [
-    "Date", "Name", "Type", "Category", "Amount",
-    "Payment Method", "Bill Number", "Location", "Remarks"
-]
-
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
     st.session_state.user_name = None
-    st.session_state.sheet_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION & SHEET HANDLING
+# GOOGLE SHEETS CONNECTION
 # ────────────────────────────────────────────────
-def connect_and_get_sheet(username):
+def connect_to_gsheet():
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -59,25 +55,7 @@ def connect_and_get_sheet(username):
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-
-        if username == "Elsha":
-            # Elshaගේ fixed sheet ID එක (ඔයා දුන් link එකෙන් ගත්තා)
-            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
-            spreadsheet = client.open_by_key(SHEET_ID)
-            sheet = spreadsheet.sheet1
-        else:
-            # Dileepa සහ Nilupa සඳහා dynamic sheet
-            sheet_name = f"{username}_Daily_Expenses"
-            try:
-                sheet = client.open(sheet_name).sheet1
-            except gspread.exceptions.SpreadsheetNotFound:
-                spreadsheet = client.create(sheet_name)
-                sheet = spreadsheet.sheet1
-                sheet.update("A1:I1", [DEFAULT_HEADERS])
-                spreadsheet.share(creds_info["client_email"], perm_type='user', role='writer')
-                st.success(f"New sheet created for {username}: {sheet_name}")
-        
-        return sheet
+        return client.open(SHEET_NAME).sheet1
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -129,10 +107,9 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def load_data():
-    sheet = connect_and_get_sheet(st.session_state.user)
+    sheet = connect_to_gsheet()
     if not sheet:
         return pd.DataFrame()
-    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
         return pd.DataFrame()
@@ -140,14 +117,14 @@ def load_data():
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    if 'Amount' in df.columns:
-        df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
-        df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
-        df['Amount'] = df['Amount'].replace(['', '.'], '0')
-        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
+    if 'මුදල' in df.columns:
+        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
+        df['මුදල'] = df['මුදල'].str.replace(r'\.+', '.', regex=True)
+        df['මුදල'] = df['මුදල'].replace(['', '.'], '0')
+        df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
     
-    if 'Date' in df.columns:
-        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
+    if 'දිනය' in df.columns:
+        df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce', format='%Y-%m-%d')
     
     return df
 
@@ -169,21 +146,28 @@ with st.form("entry_form", clear_on_submit=True):
 
     if trans_type == "Expense":
         category = st.selectbox("Category", [
-            "Food & Groceries", "Transport & Fuel", "Utility Bills",
-            "Mobile & Internet", "Medical & Pharmacy", "Education & Stationery",
-            "Household & Cleaning", "Vehicle Maintenance", "Clothing & Personal Care",
-            "Entertainment & Leisure", "Rent & Loan Payments", "Gifts & Celebrations",
-            "Insurance & Taxes", "Other Expenses"
+            "Food Expenses",
+            "Transport",
+            "Bills",
+            "Essential Items",
+            "Vehicle Maintenance",
+            "Hospital Expenses",
+            "Other"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("Payment Method", ["Cash", "Card", "Online Transfer"])
+        payment_method = st.selectbox("Payment Method", [
+            "Cash",
+            "Card",
+            "Online Transfer"
+        ])
         bill_no = st.text_input("Bill Number")
         location = st.text_input("Location")
     else:
         category = st.selectbox("Income Type", [
-            "Salary / Wages", "Business Profit", "Freelance / Part-time",
-            "Rental Income", "Allowance / Pocket Money", "Investment Returns",
-            "Government / Pension", "Gifts / Financial Help", "Other Income"
+            "Monthly Salary",
+            "Allowance",
+            "Rent Income",
+            "Other Income"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
         payment_method = "Bank/Cash"
@@ -195,19 +179,19 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_and_get_sheet(st.session_state.user)
+        sheet = connect_to_gsheet()
         if sheet:
             try:
                 row = [
-                    str(today),
-                    user_name,
-                    trans_type,
-                    category,
-                    f"{amount:.2f}",
-                    payment_method,
-                    bill_no,
-                    location,
-                    remarks
+                    str(today),          # දිනය
+                    user_name,           # නම
+                    trans_type,          # වර්ගය
+                    category,            # කාණ්ඩය
+                    f"{amount:.2f}",     # මුදල
+                    payment_method,      # ගෙවූ ක්‍රමය
+                    bill_no,             # බිල් අංකය
+                    location,            # ස්ථානය
+                    remarks              # සටහන්
                 ]
                 sheet.append_row(row)
                 st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
@@ -232,17 +216,17 @@ with col_start:
 with col_end:
     end_date = st.date_input("End Date", value=date.today(), min_value=start_date, max_value=date.today())
 
-if not df.empty and 'Date_converted' in df.columns:
+if not df.empty and 'දිනය_converted' in df.columns:
     filtered_df = df[
-        (df['Date_converted'] >= pd.to_datetime(start_date)) &
-        (df['Date_converted'] <= pd.to_datetime(end_date))
+        (df['දිනය_converted'] >= pd.to_datetime(start_date)) &
+        (df['දිනය_converted'] <= pd.to_datetime(end_date))
     ].copy()
 else:
     filtered_df = pd.DataFrame()
 
 if not filtered_df.empty:
-    income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
-    expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
+    income = filtered_df[filtered_df['වර්ගය'] == 'Income']['මුදල'].sum()
+    expense = filtered_df[filtered_df['වර්ගය'] == 'Expense']['මුදල'].sum()
     balance = income - expense
 
     c1, c2, c3 = st.columns(3)
@@ -251,10 +235,10 @@ if not filtered_df.empty:
     c3.metric("💵 Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
     st.subheader("📊 Expense Breakdown")
-    expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
+    expenses_only = filtered_df[filtered_df['වර්ගය'] == 'Expense']
     if not expenses_only.empty:
-        pie_data = expenses_only.groupby('Category')['Amount'].sum().reset_index()
-        fig = px.pie(pie_data, values='Amount', names='Category',
+        pie_data = expenses_only.groupby('කාණ්ඩය')['මුදල'].sum().reset_index()
+        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය',
                      title=f'Expense Breakdown from {start_date} to {end_date}', hole=0.5)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
@@ -262,14 +246,14 @@ if not filtered_df.empty:
         st.info("No expenses in the selected period.")
 
     st.subheader("📝 Transaction List")
-    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
-    filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
+    filtered_df['දිනය'] = filtered_df['දිනය_converted'].dt.strftime('%Y-%m-%d')
+    filtered_df = filtered_df.sort_values('දිනය_converted', ascending=False)
 
-    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
+    display_cols = ['දිනය', 'නම', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'ගෙවූ ක්‍රමය', 'සටහන්']
     final_cols = [c for c in display_cols if c in filtered_df.columns]
 
     st.dataframe(
-        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
+        filtered_df[final_cols].style.format({'මුදල': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
         use_container_width=True,
         hide_index=True
     )
