@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,11 +16,13 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
+SHEET_NAME = "My Daily Expenses"
+
 USERS = {
     "Dileepa": {
         "display_name": "Mr. Dileepa Madushanka",
@@ -53,7 +55,7 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open("My Daily Expenses").sheet1
+        return client.open(SHEET_NAME).sheet1
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -184,6 +186,18 @@ if submit:
                 ]
                 sheet.append_row(row)
                 st.success(f"Added: Rs. {amount:,.2f}")
+                
+                # Data එක add කළාට පස්සේ sheet එක full sort කරනවා (newest date උඩට)
+                all_values = sheet.get_all_values()
+                if len(all_values) > 1:
+                    header = all_values[0]
+                    data_rows = all_values[1:]
+                    # Date එක column 1 (index 0) තියෙනවා කියල assume කරලා sort කරනවා
+                    data_rows.sort(key=lambda x: x[0], reverse=True)  # descending date
+                    sheet.clear()
+                    sheet.update("A1", [header])
+                    sheet.update("A2", data_rows)
+                
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
@@ -276,7 +290,7 @@ if not filtered_df.empty:
 
         st.download_button("Download PDF", pdf_buffer, f"expenses_{start_date}_to_{end_date}.pdf", "application/pdf")
 else:
-    st.info("No data in selected range.")
+    st.info("No data in selected range or sheet empty.")
 
 st.markdown("---")
 st.caption("App by Dilip | Streamlit & Google Sheets")
