@@ -123,7 +123,7 @@ def load_data():
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Date conversion - dayfirst=True for dd/mm/yyyy format
+    # Date conversion - dayfirst=True for dd/mm/yyyy
     if 'Date' in df.columns:
         df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
     
