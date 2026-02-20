@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# For PDF download - add reportlab to requirements.txt
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,33 +16,45 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab library (pip install reportlab)")
+    st.warning("PDF download requires reportlab (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
-SHEET_NAME = "My Daily Expenses"
-
 USERS = {
-    "dileepa": {
-        "display_name": "Mr. Dileepa",
+    "Dileepa": {
+        "display_name": "Mr. Dileepa Madushanka",
         "password_hash": hashlib.sha256("dileepa123".encode()).hexdigest()
     },
-    "nilupa": {
-        "display_name": "Mrs. Nilupa",
-        "password_hash": hashlib.sha256("nilupa456".encode()).hexdigest()
+    "Nilupa": {
+        "display_name": "Mrs. Nilupa Nawarathne",
+        "password_hash": hashlib.sha256("nilupa123".encode()).hexdigest()
+    },
+    "Elsha": {
+        "display_name": "Mrs. Elsha Parami",
+        "password_hash": hashlib.sha256("elsha123".encode()).hexdigest()
     }
 }
+
+# Default headers for new sheets
+DEFAULT_HEADERS = [
+    "Date", "Name", "Type", "Category", "Amount",
+    "Payment Method", "Bill Number", "Location", "Remarks"
+]
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
     st.session_state.user_name = None
+    st.session_state.sheet_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION & SHEET CREATION
 # ────────────────────────────────────────────────
-def connect_to_gsheet():
+def get_user_sheet_name(username):
+    return f"{username}_Daily_Expenses"
+
+def connect_and_get_sheet(username):
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -51,9 +63,25 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open(SHEET_NAME).sheet1
+
+        sheet_name = get_user_sheet_name(username)
+        
+        # Try to open existing sheet
+        try:
+            sheet = client.open(sheet_name).sheet1
+        except gspread.exceptions.SpreadsheetNotFound:
+            # Create new spreadsheet if not found
+            spreadsheet = client.create(sheet_name)
+            sheet = spreadsheet.sheet1
+            # Set headers
+            sheet.update("A1:I1", [DEFAULT_HEADERS])
+            # Share with service account (optional but good practice)
+            spreadsheet.share(creds_info["client_email"], perm_type='user', role='writer')
+            st.success(f"New sheet created for {username}: {sheet_name}")
+        
+        return sheet
     except Exception as e:
-        st.error(f"Google Sheets connection error: {str(e)}")
+        st.error(f"Google Sheets error: {str(e)}")
         return None
 
 # ────────────────────────────────────────────────
@@ -63,7 +91,7 @@ def login_page():
     st.title("🔐 Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="dileepa or nilupa")
+        username = st.text_input("Username", placeholder="Dileepa / Nilupa / Elsha")
         password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             if username in USERS:
@@ -72,6 +100,7 @@ def login_page():
                     st.session_state.logged_in = True
                     st.session_state.user = username
                     st.session_state.user_name = USERS[username]["display_name"]
+                    st.session_state.sheet_name = get_user_sheet_name(username)
                     st.success(f"Welcome, {st.session_state.user_name}!")
                     st.rerun()
                 else:
@@ -103,9 +132,10 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def load_data():
-    sheet = connect_to_gsheet()
+    sheet = connect_and_get_sheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
+    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
         return pd.DataFrame()
@@ -142,18 +172,21 @@ with st.form("entry_form", clear_on_submit=True):
 
     if trans_type == "Expense":
         category = st.selectbox("Category", [
-            "Food Expenses", "Transport", "Bills",
-            "Essential Items", "Vehicle Maintenance", "Hospital Expenses", "Other"
+            "Food & Groceries", "Transport & Fuel", "Utility Bills",
+            "Mobile & Internet", "Medical & Pharmacy", "Education & Stationery",
+            "Household & Cleaning", "Vehicle Maintenance", "Clothing & Personal Care",
+            "Entertainment & Leisure", "Rent & Loan Payments", "Gifts & Celebrations",
+            "Insurance & Taxes", "Other Expenses"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("Payment Method", [
-            "Cash", "Card", "Online Transfer"
-        ])
+        payment_method = st.selectbox("Payment Method", ["Cash", "Card", "Online Transfer"])
         bill_no = st.text_input("Bill Number")
         location = st.text_input("Location")
     else:
         category = st.selectbox("Income Type", [
-            "Monthly Salary", "Allowance", "Rent Income", "Other Income"
+            "Salary / Wages", "Business Profit", "Freelance / Part-time",
+            "Rental Income", "Allowance / Pocket Money", "Investment Returns",
+            "Government / Pension", "Gifts / Financial Help", "Other Income"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
         payment_method = "Bank/Cash"
@@ -165,7 +198,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet()
+        sheet = connect_and_get_sheet(st.session_state.user)
         if sheet:
             try:
                 row = [
@@ -210,8 +243,6 @@ if not df.empty and 'Date_converted' in df.columns:
 else:
     filtered_df = pd.DataFrame()
 
-st.write("Debug: Filtered rows:", len(filtered_df))
-
 if not filtered_df.empty:
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
     expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
@@ -222,7 +253,6 @@ if not filtered_df.empty:
     c2.metric("💸 Expense", f"Rs. {expense:,.2f}")
     c3.metric("💵 Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
-    # Pie Chart
     st.subheader("📊 Expense Breakdown")
     expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
     if not expenses_only.empty:
@@ -234,7 +264,6 @@ if not filtered_df.empty:
     else:
         st.info("No expenses in the selected period.")
 
-    # List View
     st.subheader("📝 Transaction List")
     filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
     filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
@@ -254,7 +283,6 @@ if not filtered_df.empty:
     st.markdown("---")
     st.subheader("Download Data")
 
-    # CSV
     csv_data = filtered_df[final_cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button(
         label="📥 Download as CSV",
@@ -263,7 +291,6 @@ if not filtered_df.empty:
         mime="text/csv"
     )
 
-    # PDF
     if PDF_AVAILABLE and not filtered_df.empty:
         pdf_buffer = BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
@@ -273,7 +300,6 @@ if not filtered_df.empty:
         elements.append(Paragraph(f"Expense Report: {start_date} to {end_date}", styles['Title']))
         elements.append(Paragraph(f"Income: Rs. {income:,.2f} | Expense: Rs. {expense:,.2f} | Balance: Rs. {balance:,.2f}", styles['Normal']))
 
-        # Table headers and data in English
         table_data = [final_cols] + filtered_df[final_cols].astype(str).values.tolist()
         t = Table(table_data)
         t.setStyle(TableStyle([
