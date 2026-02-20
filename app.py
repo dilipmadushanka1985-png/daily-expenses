@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
+    st.warning("PDF download requires reportlab (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -42,7 +42,7 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION (separate sheets)
+# GOOGLE SHEETS CONNECTION (separate sheets for Elsha)
 # ────────────────────────────────────────────────
 def connect_to_gsheet(username):
     try:
@@ -55,10 +55,9 @@ def connect_to_gsheet(username):
         client = gspread.authorize(credentials)
 
         if username in ["Dileepa", "Nilupa"]:
-            # Dileepa + Nilupa → එකම sheet එක
+            # Dileepa + Nilupa එකම sheet එකට
             SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
         else:  # Elsha
-            # Elsha → වෙනම sheet එක
             SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
 
         spreadsheet = client.open_by_key(SHEET_ID)
