@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
+# PDF සඳහා reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -21,8 +21,6 @@ except ImportError:
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
-SHEET_NAME = "My Daily Expenses"
-
 USERS = {
     "Dileepa": {
         "display_name": "Mr. Dileepa Madushanka",
@@ -44,9 +42,9 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION (separate sheets)
 # ────────────────────────────────────────────────
-def connect_to_gsheet():
+def connect_to_gsheet(username):
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -55,7 +53,17 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open(SHEET_NAME).sheet1
+
+        if username in ["Dileepa", "Nilupa"]:
+            # Dileepa + Nilupa → එකම sheet එක
+            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
+        else:  # Elsha
+            # Elsha → වෙනම sheet එක
+            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
+
+        spreadsheet = client.open_by_key(SHEET_ID)
+        sheet = spreadsheet.sheet1
+        return sheet
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -107,7 +115,7 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=5)
 def load_data():
-    sheet = connect_to_gsheet()
+    sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
     
@@ -125,7 +133,7 @@ def load_data():
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Date conversion - dayfirst=True for dd/mm/yyyy
+    # Date conversion - dayfirst for dd/mm/yyyy
     if 'Date' in df.columns:
         df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
     
@@ -170,7 +178,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet()
+        sheet = connect_to_gsheet(st.session_state.user)
         if sheet:
             try:
                 row = [
@@ -186,18 +194,6 @@ if submit:
                 ]
                 sheet.append_row(row)
                 st.success(f"Added: Rs. {amount:,.2f}")
-                
-                # Data එක add කළාට පස්සේ sheet එක full sort කරනවා (newest date උඩට)
-                all_values = sheet.get_all_values()
-                if len(all_values) > 1:
-                    header = all_values[0]
-                    data_rows = all_values[1:]
-                    # Date එක column 1 (index 0) තියෙනවා කියල assume කරලා sort කරනවා
-                    data_rows.sort(key=lambda x: x[0], reverse=True)  # descending date
-                    sheet.clear()
-                    sheet.update("A1", [header])
-                    sheet.update("A2", data_rows)
-                
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
@@ -213,7 +209,7 @@ st.subheader("Custom Date Range")
 
 col_start, col_end = st.columns(2)
 with col_start:
-    start_date = st.date_input("Start", value=date.today().replace(day=1), min_value=date(2023,1,1))
+    start_date = st.date_input("Start", value=date(2026, 1, 1), min_value=date(2023,1,1))
 
 with col_end:
     end_date = st.date_input("End", value=date.today(), min_value=start_date)
