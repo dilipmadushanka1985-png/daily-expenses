@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,13 +16,11 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
+    st.warning("PDF download requires reportlab (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
 # ────────────────────────────────────────────────
-SHEET_NAME = "My Daily Expenses"
-
 USERS = {
     "Dileepa": {
         "display_name": "Mr. Dileepa Madushanka",
@@ -55,7 +53,7 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open(SHEET_NAME).sheet1
+        return client.open("My Daily Expenses").sheet1
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -103,38 +101,31 @@ st.title("Daily Expense Tracker")
 st.markdown(f"**Welcome** — {st.session_state.user_name}")
 
 # ────────────────────────────────────────────────
-# DATA LOAD with CACHE
+# DATA LOAD
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=10)  # ttl අඩු කළා fresh data එක ඉක්මනට එන්න
+@st.cache_data(ttl=5)
 def load_data():
     sheet = connect_to_gsheet()
     if not sheet:
-        st.error("Could not connect to Google Sheet")
         return pd.DataFrame()
     
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
-        st.info("Sheet එකේ data තවම නැහැ")
         return pd.DataFrame()
     
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    # මුදල clean කරනවා
-    if 'මුදල' in df.columns:
-        df['මුදල'] = df['මුදල'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
-        df['මුදල'] = df['මුදල'].str.replace(r'\.+', '.', regex=True)
-        df['මුදල'] = df['මුදල'].replace(['', '.', 'nan'], '0')
-        df['මුදල'] = pd.to_numeric(df['මුදල'], errors='coerce').fillna(0)
+    # Amount cleaning
+    if 'Amount' in df.columns:
+        df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
+        df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
+        df['Amount'] = df['Amount'].replace(['', '.'], '0')
+        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    if 'දිනය' in df.columns:
-        df['දිනය_converted'] = pd.to_datetime(df['දිනය'], errors='coerce', format='%Y-%m-%d', dayfirst=True)
-    
-    # Debug: raw data ටිකක් පෙන්නමු
-    st.write("Debug: Loaded rows:", len(df))
-    if not df.empty:
-        st.write("Debug: First 3 rows:")
-        st.dataframe(df.head(3))
+    # Date conversion - dayfirst=True for dd/mm/yyyy format
+    if 'Date' in df.columns:
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
     
     return df
 
@@ -144,7 +135,7 @@ df = load_data()
 # ENTRY FORM
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("➕ Add New Entry")
+st.subheader("Add New Entry")
 trans_type = st.radio("Type", ["Expense", "Income"], horizontal=True)
 
 with st.form("entry_form", clear_on_submit=True):
@@ -192,49 +183,38 @@ if submit:
                     remarks
                 ]
                 sheet.append_row(row)
-                st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
-                st.cache_data.clear()  # Cache clear කරනවා
-                st.rerun()  # Full refresh
+                st.success(f"Added: Rs. {amount:,.2f}")
+                st.cache_data.clear()
+                st.rerun()
             except Exception as e:
-                st.error(f"Error saving data: {e}")
+                st.error(f"Error: {e}")
     else:
-        st.warning("Please enter a valid amount.")
+        st.warning("Enter a valid amount.")
 
 # ────────────────────────────────────────────────
-# DATE RANGE FILTER & VIEW
+# DATE RANGE & VIEW
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("📅 Custom Date Range")
+st.subheader("Custom Date Range")
 
 col_start, col_end = st.columns(2)
 with col_start:
-    default_start = date.today().replace(day=1)
-    start_date = st.date_input("Start Date", value=default_start, min_value=date(2023,1,1), max_value=date.today())
+    start_date = st.date_input("Start", value=date.today().replace(day=1), min_value=date(2023,1,1))
 
 with col_end:
-    end_date = st.date_input("End Date", value=date.today(), min_value=start_date, max_value=date.today())
+    end_date = st.date_input("End", value=date.today(), min_value=start_date)
 
-# Debug date conversion
-if not df.empty and 'දිනය' in df.columns:
-    st.write("Debug: Sample dates from sheet:", df['දිනය'].head(5).tolist())
-    st.write("Debug: Converted dates:", df['දිනය_converted'].head(5).dt.strftime('%Y-%m-%d').tolist() if 'දිනය_converted' in df.columns else "No converted dates")
-
-if not df.empty and 'දිනය_converted' in df.columns:
+if not df.empty and 'Date_converted' in df.columns:
     filtered_df = df[
-        (df['දිනය_converted'] >= pd.to_datetime(start_date)) &
-        (df['දිනය_converted'] <= pd.to_datetime(end_date))
+        (df['Date_converted'] >= pd.to_datetime(start_date)) &
+        (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
 else:
     filtered_df = pd.DataFrame()
 
-st.write("Debug: Filtered rows count:", len(filtered_df))
-
 if not filtered_df.empty:
-    st.write("Debug: Filtered data sample:")
-    st.dataframe(filtered_df.head(3))
-
-    income = filtered_df[filtered_df['වර්ගය'] == 'Income']['මුදල'].sum()
-    expense = filtered_df[filtered_df['වර්ගය'] == 'Expense']['මුදල'].sum()
+    income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
+    expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
     balance = income - expense
 
     c1, c2, c3 = st.columns(3)
@@ -243,43 +223,35 @@ if not filtered_df.empty:
     c3.metric("Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
     st.subheader("Expense Breakdown")
-    expenses_only = filtered_df[filtered_df['වර්ගය'] == 'Expense']
+    expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
     if not expenses_only.empty:
-        pie_data = expenses_only.groupby('කාණ්ඩය')['මුදල'].sum().reset_index()
-        fig = px.pie(pie_data, values='මුදල', names='කාණ්ඩය',
-                     title=f'Expense Breakdown from {start_date} to {end_date}', hole=0.5)
+        pie_data = expenses_only.groupby('Category')['Amount'].sum().reset_index()
+        fig = px.pie(pie_data, values='Amount', names='Category',
+                     title=f'Expense Breakdown {start_date} to {end_date}', hole=0.5)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No expenses in selected range.")
 
-    st.subheader("Transaction List")
-    filtered_df['දිනය'] = filtered_df['දිනය_converted'].dt.strftime('%Y-%m-%d')
-    filtered_df = filtered_df.sort_values('දිනය_converted', ascending=False)
+    st.subheader("Transactions")
+    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
+    filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
-    display_cols = ['දිනය', 'නම', 'වර්ගය', 'කාණ්ඩය', 'මුදල', 'ගෙවූ ක්‍රමය', 'සටහන්']
+    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
     final_cols = [c for c in display_cols if c in filtered_df.columns]
 
     st.dataframe(
-        filtered_df[final_cols].style.format({'මුදල': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
+        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
         use_container_width=True,
         hide_index=True
     )
 
-    # Download buttons...
+    # Downloads
     st.markdown("---")
-    st.subheader("Download Data")
+    st.subheader("Download")
 
     csv_data = filtered_df[final_cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.download_button(
-        label="Download as CSV",
-        data=csv_data,
-        file_name=f"expenses_{start_date}_to_{end_date}.csv",
-        mime="text/csv"
-    )
+    st.download_button("Download CSV", csv_data, f"expenses_{start_date}_to_{end_date}.csv", "text/csv")
 
     if PDF_AVAILABLE and not filtered_df.empty:
-        # PDF code (same as before)
         pdf_buffer = BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
         elements = []
@@ -296,22 +268,15 @@ if not filtered_df.empty:
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
             ('FONTSIZE', (0,0), (-1,0), 12),
-            ('BOTTOMPADDING', (0,0), (-1,0), 12),
             ('GRID', (0,0), (-1,-1), 1, colors.grey),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         elements.append(t)
         doc.build(elements)
         pdf_buffer.seek(0)
 
-        st.download_button(
-            label="Download as PDF",
-            data=pdf_buffer,
-            file_name=f"expenses_{start_date}_to_{end_date}.pdf",
-            mime="application/pdf"
-        )
+        st.download_button("Download PDF", pdf_buffer, f"expenses_{start_date}_to_{end_date}.pdf", "application/pdf")
 else:
-    st.info("No data in selected range or sheet empty.")
+    st.info("No data in selected range.")
 
 st.markdown("---")
-st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
+st.caption("App by Dilip | Streamlit & Google Sheets")
