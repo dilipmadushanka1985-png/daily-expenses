@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
+    st.warning("PDF download requires reportlab (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -44,7 +44,7 @@ if "logged_in" not in st.session_state:
 # ────────────────────────────────────────────────
 # GOOGLE SHEETS CONNECTION
 # ────────────────────────────────────────────────
-def connect_to_gsheet(username):
+def connect_to_gsheet():
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -53,15 +53,7 @@ def connect_to_gsheet(username):
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-
-        if username == "Elsha":
-            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
-        else:
-            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
-
-        spreadsheet = client.open_by_key(SHEET_ID)
-        sheet = spreadsheet.sheet1
-        return sheet
+        return client.open("My Daily Expenses").sheet1
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -70,10 +62,10 @@ def connect_to_gsheet(username):
 # LOGIN / LOGOUT
 # ────────────────────────────────────────────────
 def login_page():
-    st.title("Login - Daily Expense Tracker")
+    st.title("🔐 Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="username")
+        username = st.text_input("Username", placeholder="dileepa or nilupa")
         password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             if username in USERS:
@@ -90,7 +82,7 @@ def login_page():
                 st.error("User not found!")
 
 def logout_button():
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("🚪 Logout"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.success("You have logged out!")
@@ -105,43 +97,32 @@ if not st.session_state.logged_in:
 
 st.set_page_config(page_title="Daily Tracker", layout="wide")
 logout_button()
-st.title("Daily Expense Tracker")
+st.title("💰 Daily Expense Tracker")
 st.markdown(f"**Welcome** — {st.session_state.user_name}")
 
 # ────────────────────────────────────────────────
-# DATA LOAD
+# DATA LOAD with CACHE
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=30)
 def load_data():
-    sheet = connect_to_gsheet(st.session_state.user)
+    sheet = connect_to_gsheet()
     if not sheet:
-        st.error("Could not connect to Google Sheet")
         return pd.DataFrame()
-    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
-        st.info("Sheet එක හිස් යි")
         return pd.DataFrame()
     
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    # Amount cleaning
     if 'Amount' in df.columns:
         df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
         df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Date conversion - dayfirst for dd/mm/yyyy
     if 'Date' in df.columns:
-        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
-    
-    # Debug
-    st.write("Debug: Loaded rows:", len(df))
-    if not df.empty:
-        st.write("Debug: First 3 rows:")
-        st.dataframe(df.head(3))
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
     
     return df
 
@@ -151,7 +132,7 @@ df = load_data()
 # ENTRY FORM
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("Add New Entry")
+st.subheader("➕ Add New Entry")
 trans_type = st.radio("Type", ["Expense", "Income"], horizontal=True)
 
 with st.form("entry_form", clear_on_submit=True):
@@ -159,7 +140,7 @@ with st.form("entry_form", clear_on_submit=True):
     with col1:
         today = st.date_input("Date", date.today())
     with col2:
-        user_name = st.session_state.user_name
+        user_name = st.session_state.user_name  # auto-filled
 
     if trans_type == "Expense":
         category = st.selectbox("Category", [
@@ -167,7 +148,9 @@ with st.form("entry_form", clear_on_submit=True):
             "Essential Items", "Vehicle Maintenance", "Hospital Expenses", "Other"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("Payment Method", ["Cash", "Card", "Online Transfer"])
+        payment_method = st.selectbox("Payment Method", [
+            "Cash", "Card", "Online Transfer"
+        ])
         bill_no = st.text_input("Bill Number")
         location = st.text_input("Location")
     else:
@@ -184,7 +167,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet(st.session_state.user)
+        sheet = connect_to_gsheet()
         if sheet:
             try:
                 row = [
@@ -199,40 +182,37 @@ if submit:
                     remarks
                 ]
                 sheet.append_row(row)
-                st.success(f"Added: Rs. {amount:,.2f}")
+                st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error saving data: {e}")
     else:
-        st.warning("Enter a valid amount.")
+        st.warning("Please enter a valid amount.")
 
 # ────────────────────────────────────────────────
-# DATE RANGE & VIEW
+# DATE RANGE FILTER & VIEW
 # ────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("Custom Date Range")
+st.subheader("📅 Custom Date Range")
 
 col_start, col_end = st.columns(2)
 with col_start:
-    start_date = st.date_input("Start", value=date(2026, 1, 1), min_value=date(2023,1,1))
+    default_start = date.today().replace(day=1)
+    start_date = st.date_input("Start Date", value=default_start, min_value=date(2023,1,1), max_value=date.today())
 
 with col_end:
-    end_date = st.date_input("End", value=date.today(), min_value=start_date)
+    end_date = st.date_input("End Date", value=date.today(), min_value=start_date, max_value=date.today())
 
 if not df.empty and 'Date_converted' in df.columns:
     filtered_df = df[
         (df['Date_converted'] >= pd.to_datetime(start_date)) &
         (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
-    
-    # Debug filter
-    st.write("Debug: Filtered rows:", len(filtered_df))
-    if not filtered_df.empty:
-        st.write("Debug: First filtered row:", filtered_df.iloc[0].to_dict())
 else:
     filtered_df = pd.DataFrame()
-    st.write("Debug: No Date_converted or df empty")
+
+st.write("Debug: Filtered rows:", len(filtered_df))
 
 if not filtered_df.empty:
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
@@ -240,43 +220,52 @@ if not filtered_df.empty:
     balance = income - expense
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Income", f"Rs. {income:,.2f}")
-    c2.metric("Expense", f"Rs. {expense:,.2f}")
-    c3.metric("Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
+    c1.metric("💰 Income", f"Rs. {income:,.2f}")
+    c2.metric("💸 Expense", f"Rs. {expense:,.2f}")
+    c3.metric("💵 Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
-    st.subheader("Expense Breakdown")
+    # Pie Chart
+    st.subheader("📊 Expense Breakdown")
     expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
     if not expenses_only.empty:
         pie_data = expenses_only.groupby('Category')['Amount'].sum().reset_index()
         fig = px.pie(pie_data, values='Amount', names='Category',
-                     title=f'Expense Breakdown {start_date} to {end_date}', hole=0.5)
+                     title=f'Expense Breakdown from {start_date} to {end_date}', hole=0.5)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("No expenses in selected range.")
+        st.info("No expenses in the selected period.")
 
-    st.subheader("Transactions")
-    filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
+    # List View
+    st.subheader("📝 Transaction List")
+    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
     filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
-    display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
-    final_cols = [c for c in display_cols if c in filtered_df.columns or c == 'Formatted Date']
+    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
+    final_cols = [c for c in display_cols if c in filtered_df.columns]
 
     st.dataframe(
-        filtered_df[final_cols].style.format({
-            'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"
-        }),
+        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
         use_container_width=True,
         hide_index=True
     )
 
-    # Downloads
+    # ────────────────────────────────────────────────
+    # DOWNLOAD BUTTONS
+    # ────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Download")
+    st.subheader("Download Data")
 
+    # CSV
     csv_data = filtered_df[final_cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.download_button("Download CSV", csv_data, f"expenses_{start_date}_to_{end_date}.csv", "text/csv")
+    st.download_button(
+        label="📥 Download as CSV",
+        data=csv_data,
+        file_name=f"expenses_{start_date}_to_{end_date}.csv",
+        mime="text/csv"
+    )
 
+    # PDF
     if PDF_AVAILABLE and not filtered_df.empty:
         pdf_buffer = BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
@@ -294,16 +283,22 @@ if not filtered_df.empty:
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
             ('FONTSIZE', (0,0), (-1,0), 12),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
             ('GRID', (0,0), (-1,-1), 1, colors.grey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         elements.append(t)
         doc.build(elements)
         pdf_buffer.seek(0)
 
-        st.download_button("Download PDF", pdf_buffer, f"expenses_{start_date}_to_{end_date}.pdf", "application/pdf")
+        st.download_button(
+            label="📄 Download as PDF",
+            data=pdf_buffer,
+            file_name=f"expenses_{start_date}_to_{end_date}.pdf",
+            mime="application/pdf"
+        )
 else:
-    st.info("No data in selected range or sheet empty.")
+    st.info("No data in the selected date range or sheet is empty.")
 
 st.markdown("---")
-st.caption("App by Dilip | Streamlit & Google Sheets")
-
+st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
