@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab (requirements.txt එකට එකතු කරන්න)
+# PDF සඳහා reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -42,9 +42,9 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION (separate sheets)
 # ────────────────────────────────────────────────
-def connect_to_gsheet():
+def connect_to_gsheet(username):
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -53,7 +53,16 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open("My Daily Expenses").sheet1
+
+        if username in ["Dileepa", "Nilupa"]:
+            # Dileepa + Nilupa එකම sheet එකට
+            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
+        else:  # Elsha
+            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
+
+        spreadsheet = client.open_by_key(SHEET_ID)
+        sheet = spreadsheet.sheet1
+        return sheet
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -65,7 +74,7 @@ def login_page():
     st.title("Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="Username")
+        username = st.text_input("Username", placeholder="Dileepa / Nilupa / Elsha")
         password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             if username in USERS:
@@ -105,7 +114,7 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=5)
 def load_data():
-    sheet = connect_to_gsheet()
+    sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
     
@@ -123,7 +132,7 @@ def load_data():
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Date conversion - dayfirst for dd/mm/yyyy
+    # Date conversion
     if 'Date' in df.columns:
         df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
     
@@ -168,7 +177,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet()
+        sheet = connect_to_gsheet(st.session_state.user)
         if sheet:
             try:
                 row = [
@@ -232,7 +241,6 @@ if not filtered_df.empty:
         st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Transactions")
-    # Date format: 2026 - Feb - 01
     filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
 
     display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
@@ -282,4 +290,3 @@ else:
 
 st.markdown("---")
 st.caption("App by Dilip | Streamlit & Google Sheets")
-
