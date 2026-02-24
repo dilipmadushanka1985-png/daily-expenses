@@ -30,7 +30,7 @@ USERS = {
         "display_name": "Mrs. Nilupa Nawarathne",
         "password_hash": hashlib.sha256("nilupa123".encode()).hexdigest()
     },
-    "Elsha": {
+    "Nishantha": {
         "display_name": "Mr. Nishantha Liyanage",
         "password_hash": hashlib.sha256("nisha123".encode()).hexdigest()
     }
@@ -313,6 +313,7 @@ else:
 
 st.markdown("---")
 st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
+
 
 
 
