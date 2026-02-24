@@ -125,14 +125,14 @@ def load_data():
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    # Clean Amount
+    # Amount cleaning
     if 'Amount' in df.columns:
         df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
         df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Clean Type and Category (case-insensitive)
+    # Clean Type and Category
     if 'Type' in df.columns:
         df['Type'] = df['Type'].astype(str).str.strip().str.capitalize()
     if 'Category' in df.columns:
@@ -207,13 +207,13 @@ if submit:
                     remarks
                 ]
                 sheet.append_row(row)
-                st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
+                st.success(f"Added: Rs. {amount:,.2f}")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error(f"Error saving data: {e}")
+                st.error(f"Error: {e}")
     else:
-        st.warning("Please enter a valid amount.")
+        st.warning("Enter a valid amount.")
 
 # ────────────────────────────────────────────────
 # DATE RANGE FILTER & VIEW
@@ -234,15 +234,20 @@ if not df.empty and 'Date_converted' in df.columns:
         (df['Date_converted'] >= pd.to_datetime(start_date)) &
         (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
+    
+    # Clean Type in filtered_df too
+    filtered_df['Type'] = filtered_df['Type'].astype(str).str.strip().str.capitalize()
+    
+    st.write("Debug: Filtered rows:", len(filtered_df))
+    if not filtered_df.empty:
+        st.write("Debug: Filtered Type values:", filtered_df['Type'].unique().tolist())
+        st.write("Debug: Sample filtered data:")
+        st.dataframe(filtered_df.head(3))
 else:
     filtered_df = pd.DataFrame()
+    st.write("Debug: No Date_converted or df empty")
 
-st.write("Debug: Filtered rows:", len(filtered_df))
 if not filtered_df.empty:
-    st.write("Debug: Filtered Type values:", filtered_df['Type'].unique().tolist())
-    st.write("Debug: Sample filtered data:")
-    st.dataframe(filtered_df.head(3))
-
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
     expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
     balance = income - expense
@@ -252,7 +257,6 @@ if not filtered_df.empty:
     c2.metric("💸 Expense", f"Rs. {expense:,.2f}")
     c3.metric("💵 Balance", f"Rs. {balance:,.2f}", delta_color="normal" if balance >= 0 else "inverse")
 
-    # Pie Chart
     st.subheader("📊 Expense Breakdown")
     expenses_only = filtered_df[filtered_df['Type'] == 'Expense']
     if not expenses_only.empty:
@@ -264,21 +268,22 @@ if not filtered_df.empty:
     else:
         st.info("No expenses in the selected period.")
 
-    # List View
     st.subheader("📝 Transaction List")
-    filtered_df['Date'] = filtered_df['Date_converted'].dt.strftime('%Y-%m-%d')
+    filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
     filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
-    display_cols = ['Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
-    final_cols = [c for c in display_cols if c in filtered_df.columns]
+    display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
+    final_cols = [c for c in display_cols if c in filtered_df.columns or c == 'Formatted Date']
 
     st.dataframe(
-        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
+        filtered_df[final_cols].style.format({
+            'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"
+        }),
         use_container_width=True,
         hide_index=True
     )
 
-    # DOWNLOAD BUTTONS
+    # Downloads
     st.markdown("---")
     st.subheader("Download Data")
 
@@ -307,7 +312,6 @@ if not filtered_df.empty:
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
             ('FONTSIZE', (0,0), (-1,0), 12),
-            ('BOTTOMPADDING', (0,0), (-1,0), 12),
             ('GRID', (0,0), (-1,-1), 1, colors.grey),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
