@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF සඳහා reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -116,12 +116,10 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 def load_data():
     sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
-        st.error("Could not connect to Google Sheet")
         return pd.DataFrame()
     
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
-        st.info("Sheet is empty")
         return pd.DataFrame()
     
     headers = [h.strip() for h in all_data[0]]
@@ -140,19 +138,9 @@ def load_data():
     if 'Category' in df.columns:
         df['Category'] = df['Category'].astype(str).str.strip()
     
-    # Date conversion - mixed format + dayfirst
+    # Date conversion
     if 'Date' in df.columns:
-        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True, format='mixed')
-    
-    # Debug
-    st.write("Debug: Loaded rows:", len(df))
-    if not df.empty:
-        st.write("Debug: Type values:", df['Type'].unique().tolist())
-        st.write("Debug: Raw Date values (first 5):", df['Date'].head(5).tolist())
-        st.write("Debug: Converted dates (first 5):", df['Date_converted'].head(5).dt.strftime('%Y-%m-%d').tolist() if 'Date_converted' in df.columns else "No conversion")
-        st.write("Debug: Invalid dates count:", df['Date_converted'].isna().sum())
-        st.write("Debug: First 3 rows:")
-        st.dataframe(df.head(3))
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
     
     return df
 
@@ -219,7 +207,7 @@ if submit:
         st.warning("Enter a valid amount.")
 
 # ────────────────────────────────────────────────
-# DATE RANGE & VIEW
+# DATE RANGE & VIEW (debug tables removed)
 # ────────────────────────────────────────────────
 st.markdown("---")
 st.subheader("📅 Custom Date Range")
@@ -238,17 +226,9 @@ if not df.empty and 'Date_converted' in df.columns:
         (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
     
-    # Clean Type in filtered_df
     filtered_df['Type'] = filtered_df['Type'].astype(str).str.strip().str.capitalize()
-    
-    st.write("Debug: Filtered rows:", len(filtered_df))
-    if not filtered_df.empty:
-        st.write("Debug: Filtered Type values:", filtered_df['Type'].unique().tolist())
-        st.write("Debug: Sample filtered data:")
-        st.dataframe(filtered_df.head(3))
 else:
     filtered_df = pd.DataFrame()
-    st.write("Debug: No Date_converted or df empty")
 
 if not filtered_df.empty:
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
