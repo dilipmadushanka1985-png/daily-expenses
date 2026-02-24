@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
+    st.warning("PDF download requires reportlab (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -42,7 +42,7 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION (separate sheets for users)
 # ────────────────────────────────────────────────
 def connect_to_gsheet(username):
     try:
@@ -55,8 +55,10 @@ def connect_to_gsheet(username):
         client = gspread.authorize(credentials)
 
         if username.lower() == "elsha":
+            # Elshaගේ data වෙනම sheet එකට
             SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
         else:
+            # Dileepa සහ Nilupa දෙන්නාගේ data එකම sheet එකට
             SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
 
         spreadsheet = client.open_by_key(SHEET_ID)
@@ -70,7 +72,7 @@ def connect_to_gsheet(username):
 # LOGIN / LOGOUT
 # ────────────────────────────────────────────────
 def login_page():
-    st.title("Login - Daily Expense Tracker")
+    st.title("🔐 Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         username = st.text_input("Username", placeholder="Dileepa / Nilupa / Elsha")
@@ -91,7 +93,7 @@ def login_page():
                 st.error("User not found!")
 
 def logout_button():
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("🚪 Logout"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.success("You have logged out!")
@@ -106,18 +108,17 @@ if not st.session_state.logged_in:
 
 st.set_page_config(page_title="Daily Tracker", layout="wide")
 logout_button()
-st.title("Daily Expense Tracker")
+st.title("💰 Daily Expense Tracker")
 st.markdown(f"**Welcome** — {st.session_state.user_name}")
 
 # ────────────────────────────────────────────────
-# DATA LOAD
+# DATA LOAD with CACHE
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=5)
-def load_data():
-    sheet = connect_to_gsheet(st.session_state.user)
+@st.cache_data(ttl=30)
+def load_data(username):
+    sheet = connect_to_gsheet(username)
     if not sheet:
         return pd.DataFrame()
-    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
         return pd.DataFrame()
@@ -125,26 +126,18 @@ def load_data():
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
-    # Amount cleaning
     if 'Amount' in df.columns:
         df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
         df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Clean Type and Category
-    if 'Type' in df.columns:
-        df['Type'] = df['Type'].astype(str).str.strip().str.capitalize()
-    if 'Category' in df.columns:
-        df['Category'] = df['Category'].astype(str).str.strip()
-    
-    # Date conversion
     if 'Date' in df.columns:
-        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
     
     return df
 
-df = load_data()
+df = load_data(st.session_state.user)
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -158,7 +151,7 @@ with st.form("entry_form", clear_on_submit=True):
     with col1:
         today = st.date_input("Date", date.today())
     with col2:
-        user_name = st.session_state.user_name
+        user_name = st.session_state.user_name  # auto-filled
 
     if trans_type == "Expense":
         category = st.selectbox("Category", [
@@ -166,7 +159,9 @@ with st.form("entry_form", clear_on_submit=True):
             "Essential Items", "Vehicle Maintenance", "Hospital Expenses", "Other"
         ])
         amount = st.number_input("Amount (Rs.)", min_value=0.0, step=100.0)
-        payment_method = st.selectbox("Payment Method", ["Cash", "Card", "Online Transfer"])
+        payment_method = st.selectbox("Payment Method", [
+            "Cash", "Card", "Online Transfer"
+        ])
         bill_no = st.text_input("Bill Number")
         location = st.text_input("Location")
     else:
@@ -189,7 +184,7 @@ if submit:
                 row = [
                     str(today),
                     user_name,
-                    trans_type.capitalize(),
+                    trans_type,
                     category,
                     f"{amount:.2f}",
                     payment_method,
@@ -198,16 +193,16 @@ if submit:
                     remarks
                 ]
                 sheet.append_row(row)
-                st.success(f"Added: Rs. {amount:,.2f}")
+                st.success(f"✅ {trans_type} added: Rs. {amount:,.2f}")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error saving data: {e}")
     else:
-        st.warning("Enter a valid amount.")
+        st.warning("Please enter a valid amount.")
 
 # ────────────────────────────────────────────────
-# DATE RANGE & VIEW (debug tables removed)
+# DATE RANGE FILTER & VIEW
 # ────────────────────────────────────────────────
 st.markdown("---")
 st.subheader("📅 Custom Date Range")
@@ -225,8 +220,6 @@ if not df.empty and 'Date_converted' in df.columns:
         (df['Date_converted'] >= pd.to_datetime(start_date)) &
         (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
-    
-    filtered_df['Type'] = filtered_df['Type'].astype(str).str.strip().str.capitalize()
 else:
     filtered_df = pd.DataFrame()
 
@@ -259,14 +252,14 @@ if not filtered_df.empty:
     final_cols = [c for c in display_cols if c in filtered_df.columns or c == 'Formatted Date']
 
     st.dataframe(
-        filtered_df[final_cols].style.format({
-            'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"
-        }),
+        filtered_df[final_cols].style.format({'Amount': lambda x: f"Rs. {x:,.2f}" if x > 0 else "-"}),
         use_container_width=True,
         hide_index=True
     )
 
-    # Downloads
+    # ────────────────────────────────────────────────
+    # DOWNLOAD BUTTONS
+    # ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Download Data")
 
@@ -295,6 +288,7 @@ if not filtered_df.empty:
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
             ('FONTSIZE', (0,0), (-1,0), 12),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
             ('GRID', (0,0), (-1,-1), 1, colors.grey),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
