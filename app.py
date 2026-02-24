@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF සඳහා reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -16,7 +16,7 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-    st.warning("PDF download requires reportlab (pip install reportlab)")
+    st.warning("PDF download සඳහා reportlab install කරන්න (pip install reportlab)")
 
 # ────────────────────────────────────────────────
 # CONFIG & CONSTANTS
@@ -30,9 +30,9 @@ USERS = {
         "display_name": "Mrs. Nilupa Nawarathne",
         "password_hash": hashlib.sha256("nilupa123".encode()).hexdigest()
     },
-    "Nishantha": {
-        "display_name": "Mr. Nishantha Liyanage",
-        "password_hash": hashlib.sha256("nisha123".encode()).hexdigest()
+    "Elsha": {
+        "display_name": "Mrs. Elsha Parami",
+        "password_hash": hashlib.sha256("elsha123".encode()).hexdigest()
     }
 }
 
@@ -42,7 +42,7 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION (separate sheets)
+# GOOGLE SHEETS CONNECTION
 # ────────────────────────────────────────────────
 def connect_to_gsheet(username):
     try:
@@ -55,10 +55,8 @@ def connect_to_gsheet(username):
         client = gspread.authorize(credentials)
 
         if username.lower() == "elsha":
-            # Elshaගේ separate sheet
             SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
         else:
-            # Dileepa සහ Nilupa සඳහා common sheet
             SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
 
         spreadsheet = client.open_by_key(SHEET_ID)
@@ -72,13 +70,13 @@ def connect_to_gsheet(username):
 # LOGIN / LOGOUT
 # ────────────────────────────────────────────────
 def login_page():
-    st.title("🔐 Login - Daily Expense Tracker")
+    st.title("Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="username")
+        username = st.text_input("Username", placeholder="Dileepa / Nilupa / Elsha")
         password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
-            username = username.capitalize()  # Case-insensitive match කරන්න
+            username = username.capitalize()
             if username in USERS:
                 input_hash = hashlib.sha256(password.encode()).hexdigest()
                 if input_hash == USERS[username]["password_hash"]:
@@ -93,7 +91,7 @@ def login_page():
                 st.error("User not found!")
 
 def logout_button():
-    if st.sidebar.button("🚪 Logout"):
+    if st.sidebar.button("Logout"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.success("You have logged out!")
@@ -108,17 +106,18 @@ if not st.session_state.logged_in:
 
 st.set_page_config(page_title="Daily Tracker", layout="wide")
 logout_button()
-st.title("💰 Daily Expense Tracker")
+st.title("Daily Expense Tracker")
 st.markdown(f"**Welcome** — {st.session_state.user_name}")
 
 # ────────────────────────────────────────────────
-# DATA LOAD with CACHE
+# DATA LOAD
 # ────────────────────────────────────────────────
-@st.cache_data(ttl=30)
-def load_data(username):
-    sheet = connect_to_gsheet(username)
+@st.cache_data(ttl=5)
+def load_data():
+    sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
+    
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
         return pd.DataFrame()
@@ -126,18 +125,33 @@ def load_data(username):
     headers = [h.strip() for h in all_data[0]]
     df = pd.DataFrame(all_data[1:], columns=headers)
     
+    # Clean Amount
     if 'Amount' in df.columns:
         df['Amount'] = df['Amount'].astype(str).str.replace(r'(Rs\.?|රු\.?|\s|,)', '', regex=True)
         df['Amount'] = df['Amount'].str.replace(r'\.+', '.', regex=True)
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
+    # Clean Type and Category (case-insensitive)
+    if 'Type' in df.columns:
+        df['Type'] = df['Type'].astype(str).str.strip().str.capitalize()
+    if 'Category' in df.columns:
+        df['Category'] = df['Category'].astype(str).str.strip()
+    
+    # Date conversion
     if 'Date' in df.columns:
-        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', format='%Y-%m-%d')
+        df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+    
+    # Debug
+    st.write("Debug: Loaded rows:", len(df))
+    if not df.empty:
+        st.write("Debug: Type values:", df['Type'].unique().tolist())
+        st.write("Debug: First 3 rows:")
+        st.dataframe(df.head(3))
     
     return df
 
-df = load_data(st.session_state.user)
+df = load_data()
 
 # ────────────────────────────────────────────────
 # ENTRY FORM
@@ -151,7 +165,7 @@ with st.form("entry_form", clear_on_submit=True):
     with col1:
         today = st.date_input("Date", date.today())
     with col2:
-        user_name = st.session_state.user_name  # auto-filled
+        user_name = st.session_state.user_name
 
     if trans_type == "Expense":
         category = st.selectbox("Category", [
@@ -184,7 +198,7 @@ if submit:
                 row = [
                     str(today),
                     user_name,
-                    trans_type,
+                    trans_type.capitalize(),
                     category,
                     f"{amount:.2f}",
                     payment_method,
@@ -224,8 +238,11 @@ else:
     filtered_df = pd.DataFrame()
 
 st.write("Debug: Filtered rows:", len(filtered_df))
-
 if not filtered_df.empty:
+    st.write("Debug: Filtered Type values:", filtered_df['Type'].unique().tolist())
+    st.write("Debug: Sample filtered data:")
+    st.dataframe(filtered_df.head(3))
+
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
     expense = filtered_df[filtered_df['Type'] == 'Expense']['Amount'].sum()
     balance = income - expense
@@ -261,13 +278,10 @@ if not filtered_df.empty:
         hide_index=True
     )
 
-    # ────────────────────────────────────────────────
     # DOWNLOAD BUTTONS
-    # ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Download Data")
 
-    # CSV
     csv_data = filtered_df[final_cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button(
         label="📥 Download as CSV",
@@ -276,7 +290,6 @@ if not filtered_df.empty:
         mime="text/csv"
     )
 
-    # PDF
     if PDF_AVAILABLE and not filtered_df.empty:
         pdf_buffer = BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
@@ -313,7 +326,3 @@ else:
 
 st.markdown("---")
 st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
-
-
-
-
