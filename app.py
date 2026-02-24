@@ -75,7 +75,7 @@ def login_page():
     st.title("🔐 Login - Daily Expense Tracker")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        username = st.text_input("Username", placeholder="dileepa or nilupa")
+        username = st.text_input("Username", placeholder="username")
         password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             username = username.capitalize()  # Case-insensitive match කරන්න
@@ -313,4 +313,5 @@ else:
 
 st.markdown("---")
 st.caption("App by Dilip | Powered by Streamlit & Google Sheets")
+
 
