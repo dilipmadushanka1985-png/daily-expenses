@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF සඳහා reportlab
+# PDF support
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -42,9 +42,9 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS CONNECTION - FIXED FOR SEPARATE SHEETS
 # ────────────────────────────────────────────────
-def connect_to_gsheet():
+def connect_to_gsheet(username):
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -53,7 +53,17 @@ def connect_to_gsheet():
         creds_info = st.secrets["gcp_service_account"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(credentials)
-        return client.open("My Daily Expenses").sheet1
+
+        if username == "Elsha":
+            # Elshaගේ data වෙනම sheet එකට
+            SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
+        else:
+            # Dileepa සහ Nilupa දෙන්නාගේ data එකම sheet එකට
+            SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
+
+        spreadsheet = client.open_by_key(SHEET_ID)
+        sheet = spreadsheet.sheet1
+        return sheet
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
         return None
@@ -105,7 +115,7 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 # ────────────────────────────────────────────────
 @st.cache_data(ttl=5)
 def load_data():
-    sheet = connect_to_gsheet()
+    sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
         return pd.DataFrame()
     
@@ -168,7 +178,7 @@ with st.form("entry_form", clear_on_submit=True):
 
 if submit:
     if amount > 0:
-        sheet = connect_to_gsheet()
+        sheet = connect_to_gsheet(st.session_state.user)
         if sheet:
             try:
                 row = [
@@ -234,7 +244,7 @@ if not filtered_df.empty:
     st.subheader("Transactions")
     filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
 
-    # Descending order by date (newest first)
+    # Descending order (newest first)
     filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
     display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
