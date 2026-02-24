@@ -7,7 +7,7 @@ from datetime import date
 import hashlib
 from io import BytesIO
 
-# PDF support
+# PDF සඳහා reportlab
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -42,7 +42,7 @@ if "logged_in" not in st.session_state:
     st.session_state.user_name = None
 
 # ────────────────────────────────────────────────
-# GOOGLE SHEETS CONNECTION - FIXED FOR SEPARATE SHEETS
+# GOOGLE SHEETS CONNECTION
 # ────────────────────────────────────────────────
 def connect_to_gsheet(username):
     try:
@@ -55,10 +55,8 @@ def connect_to_gsheet(username):
         client = gspread.authorize(credentials)
 
         if username == "Elsha":
-            # Elshaගේ data වෙනම sheet එකට
             SHEET_ID = "1onhz9wxk3u66ILtOTgCCTPRZxEtwMBMtJSleKJY3YZI"
         else:
-            # Dileepa සහ Nilupa දෙන්නාගේ data එකම sheet එකට
             SHEET_ID = "1BML0HDEFI3vcfTsem3RF4jquiDMdREctEHhCUAXAM-Y"
 
         spreadsheet = client.open_by_key(SHEET_ID)
@@ -117,10 +115,12 @@ st.markdown(f"**Welcome** — {st.session_state.user_name}")
 def load_data():
     sheet = connect_to_gsheet(st.session_state.user)
     if not sheet:
+        st.error("Could not connect to Google Sheet")
         return pd.DataFrame()
     
     all_data = sheet.get_all_values()
     if len(all_data) <= 1:
+        st.info("Sheet එක හිස් යි")
         return pd.DataFrame()
     
     headers = [h.strip() for h in all_data[0]]
@@ -133,9 +133,15 @@ def load_data():
         df['Amount'] = df['Amount'].replace(['', '.'], '0')
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     
-    # Date conversion
+    # Date conversion - dayfirst for dd/mm/yyyy
     if 'Date' in df.columns:
         df['Date_converted'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+    
+    # Debug
+    st.write("Debug: Loaded rows:", len(df))
+    if not df.empty:
+        st.write("Debug: First 3 rows:")
+        st.dataframe(df.head(3))
     
     return df
 
@@ -219,8 +225,14 @@ if not df.empty and 'Date_converted' in df.columns:
         (df['Date_converted'] >= pd.to_datetime(start_date)) &
         (df['Date_converted'] <= pd.to_datetime(end_date))
     ].copy()
+    
+    # Debug filter
+    st.write("Debug: Filtered rows:", len(filtered_df))
+    if not filtered_df.empty:
+        st.write("Debug: First filtered row:", filtered_df.iloc[0].to_dict())
 else:
     filtered_df = pd.DataFrame()
+    st.write("Debug: No Date_converted or df empty")
 
 if not filtered_df.empty:
     income = filtered_df[filtered_df['Type'] == 'Income']['Amount'].sum()
@@ -240,11 +252,11 @@ if not filtered_df.empty:
                      title=f'Expense Breakdown {start_date} to {end_date}', hole=0.5)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No expenses in selected range.")
 
     st.subheader("Transactions")
     filtered_df['Formatted Date'] = filtered_df['Date_converted'].dt.strftime('%Y - %b - %d')
-
-    # Descending order (newest first)
     filtered_df = filtered_df.sort_values('Date_converted', ascending=False)
 
     display_cols = ['Formatted Date', 'Name', 'Type', 'Category', 'Amount', 'Payment Method', 'Remarks']
